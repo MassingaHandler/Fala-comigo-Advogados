@@ -1,0 +1,8 @@
+{
+  "name": "Fala Comigo (Advogado)",
+  "description": "A functional prototype of a digital platform to offer remote legal assistance with consultations via chat/video and payments via M-Pesa.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
