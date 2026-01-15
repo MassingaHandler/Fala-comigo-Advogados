@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { RegistrationData } from '../types';
 import { validateEmail, validatePhone, validateFullName } from '../lib/validators';
-import { ChevronLeftIcon, UserIcon, MailIcon, PhoneIcon, CheckCircleIcon } from './ui/icons';
+import { ChevronLeftIcon, UserIcon, MailIcon, PhoneIcon, LockIcon } from './ui/icons';
 import { MozambiqueFlagIcon } from './ui/icons';
 
 interface Props {
@@ -12,8 +12,9 @@ interface Props {
 export default function QuickRegistration({ onComplete, onBack }: Props) {
     const [data, setData] = useState<RegistrationData>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [showPhoneOtp, setShowPhoneOtp] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
 
     const updateData = (field: keyof RegistrationData, value: any) => {
         setData(prev => ({ ...prev, [field]: value }));
@@ -35,8 +36,12 @@ export default function QuickRegistration({ onComplete, onBack }: Props) {
             newErrors.phoneNumber = 'Telefone inválido (formato: +258 84 123 4567)';
         }
 
-        if (!data.phoneVerified) {
-            newErrors.phoneNumber = 'Por favor, verifique seu telefone';
+        if (!password || password.length < 6) {
+            newErrors.password = 'Senha deve ter no mínimo 6 caracteres';
+        }
+
+        if (password !== confirmPassword) {
+            newErrors.confirmPassword = 'As senhas não coincidem';
         }
 
         setErrors(newErrors);
@@ -48,14 +53,56 @@ export default function QuickRegistration({ onComplete, onBack }: Props) {
 
         setIsLoading(true);
 
-        // Simulate API call
-        setTimeout(() => {
+        try {
+            // Chamar API do backend para registrar usuário
+            const response = await fetch('http://localhost:8000/api/v1/auth/register/user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    fullName: data.fullName,
+                    birthDate: '1990-01-01', // Data padrão, pode ser atualizada depois
+                    nationality: 'Moçambicana',
+                    documentType: 'bi',
+                    documentNumber: 'TEMP-' + Date.now(), // Temporário
+                    phoneNumber: data.phoneNumber,
+                    email: data.email,
+                    password: password,
+                    city: 'Maputo',
+                    country: 'Moçambique'
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.detail || 'Erro ao criar conta');
+            }
+
+            // Salvar token no localStorage
+            localStorage.setItem('fala_comigo_token', result.token);
+            localStorage.setItem('fala_comigo_user', JSON.stringify({
+                id: result.userId,
+                fullName: data.fullName,
+                email: data.email,
+                phoneNumber: data.phoneNumber,
+                isQuickRegistration: true
+            }));
+
+            // Completar registro
             onComplete({
                 ...data,
-                // Mark as quick registration - full profile will be required later
+                userId: result.userId,
                 isQuickRegistration: true
             });
-        }, 500);
+
+        } catch (error: any) {
+            console.error('Erro ao registrar:', error);
+            setErrors({ submit: error.message || 'Erro ao criar conta. Tente novamente.' });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -86,7 +133,7 @@ export default function QuickRegistration({ onComplete, onBack }: Props) {
                         Criar Conta Rápida
                     </h2>
                     <p className="text-center text-gray-600 dark:text-gray-400 mb-6 text-sm">
-                        Comece agora com apenas 3 informações básicas
+                        Preencha os dados abaixo para criar sua conta
                     </p>
 
                     <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-5">
@@ -137,70 +184,74 @@ export default function QuickRegistration({ onComplete, onBack }: Props) {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Telefone *
                             </label>
-                            <div className="flex gap-2">
-                                <div className="relative flex-1">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <PhoneIcon className="w-5 h-5 text-gray-400" />
-                                    </div>
-                                    <input
-                                        type="tel"
-                                        value={data.phoneNumber || ''}
-                                        onChange={(e) => updateData('phoneNumber', e.target.value)}
-                                        disabled={data.phoneVerified}
-                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.phoneNumber ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                                            } bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 transition-all`}
-                                        placeholder="+258 84 123 4567"
-                                    />
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <PhoneIcon className="w-5 h-5 text-gray-400" />
                                 </div>
-                                {!data.phoneVerified && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPhoneOtp(true)}
-                                        className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all whitespace-nowrap font-semibold"
-                                    >
-                                        Verificar
-                                    </button>
-                                )}
-                                {data.phoneVerified && (
-                                    <div className="flex items-center px-4 py-3 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg">
-                                        <CheckCircleIcon className="w-5 h-5" />
-                                    </div>
-                                )}
+                                <input
+                                    type="tel"
+                                    value={data.phoneNumber || ''}
+                                    onChange={(e) => updateData('phoneNumber', e.target.value)}
+                                    className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.phoneNumber ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                                        } bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all`}
+                                    placeholder="+258 84 123 4567"
+                                />
                             </div>
                             {errors.phoneNumber && <p className="text-red-500 text-xs mt-1">{errors.phoneNumber}</p>}
                         </div>
 
-                        {/* Phone OTP Verification */}
-                        {showPhoneOtp && !data.phoneVerified && (
-                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 animate-slide-up">
-                                <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
-                                    Código enviado para <strong>{data.phoneNumber}</strong>
-                                </p>
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
-                                    💡 Use <strong>123456</strong> para demo
-                                </p>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={data.phoneOtpCode || ''}
-                                        onChange={(e) => updateData('phoneOtpCode', e.target.value)}
-                                        maxLength={6}
-                                        className="flex-1 px-4 py-2 rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="000000"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (data.phoneOtpCode === '123456') {
-                                                updateData('phoneVerified', true);
-                                                setShowPhoneOtp(false);
-                                            }
-                                        }}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold"
-                                    >
-                                        Confirmar
-                                    </button>
+                        {/* Password */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Senha *
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <LockIcon className="w-5 h-5 text-gray-400" />
                                 </div>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => {
+                                        setPassword(e.target.value);
+                                        if (errors.password) setErrors(prev => ({ ...prev, password: '' }));
+                                    }}
+                                    className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                                        } bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all`}
+                                    placeholder="Mínimo 6 caracteres"
+                                />
+                            </div>
+                            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                        </div>
+
+                        {/* Confirm Password */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Confirmar Senha *
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <LockIcon className="w-5 h-5 text-gray-400" />
+                                </div>
+                                <input
+                                    type="password"
+                                    value={confirmPassword}
+                                    onChange={(e) => {
+                                        setConfirmPassword(e.target.value);
+                                        if (errors.confirmPassword) setErrors(prev => ({ ...prev, confirmPassword: '' }));
+                                    }}
+                                    className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                                        } bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all`}
+                                    placeholder="Repita a senha"
+                                />
+                            </div>
+                            {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+                        </div>
+
+                        {/* Error Message */}
+                        {errors.submit && (
+                            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                                <p className="text-sm text-red-700 dark:text-red-300">{errors.submit}</p>
                             </div>
                         )}
 

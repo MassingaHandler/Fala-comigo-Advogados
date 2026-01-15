@@ -175,5 +175,6 @@ export interface RegistrationData {
 
   // Quick Registration Flag
   isQuickRegistration?: boolean; // If true, only basic info provided
+  userId?: string; // ID retornado após registro no backend
 }
 
