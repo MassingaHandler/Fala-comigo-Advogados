@@ -71,6 +71,10 @@ class Order(Base):
     # Termos (para follow-ups)
     terms_accepted = Column(Boolean, default=False)
     
+    # Notas e Acompanhamento
+    lawyer_notes = Column(Text, nullable=True)
+    follow_up_requested = Column(Boolean, default=False)
+    
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -99,6 +103,8 @@ class Order(Base):
             "transaction_reference": self.transaction_reference,
             "status": self.status,
             "termsAccepted": self.terms_accepted,
+            "lawyerNotes": self.lawyer_notes,
+            "followUpRequested": self.follow_up_requested,
             "createdAt": self.created_at.isoformat() if self.created_at else None
         }
 
@@ -120,6 +126,7 @@ class Assignment(Base):
     # Relacionamentos
     order = relationship("Order", foreign_keys=[order_id])
     lawyer = relationship("Lawyer", foreign_keys=[lawyer_id])
+    session = relationship("Session", back_populates="assignment", uselist=False)
     
     def __repr__(self):
         return f"<Assignment {self.assignment_id}>"
@@ -149,7 +156,7 @@ class Session(Base):
     end_time = Column(DateTime, nullable=True)
     
     # Relacionamento
-    assignment = relationship("Assignment", foreign_keys=[assignment_id])
+    assignment = relationship("Assignment", foreign_keys=[assignment_id], back_populates="session")
     
     def __repr__(self):
         return f"<Session {self.session_id}>"

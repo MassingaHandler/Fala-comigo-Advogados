@@ -1,100 +1,59 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DownloadIcon, FilterIcon } from '../ui/dashboard-icons';
 import ActivityChart from '../ui/ActivityChart';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 export default function AdminAnalytics() {
     const [period, setPeriod] = useState<'week' | 'month' | 'year'>('month');
     const [selectedMetric, setSelectedMetric] = useState<'revenue' | 'cases' | 'users'>('revenue');
+    const [isLoading, setIsLoading] = useState(true);
+    const [data, setData] = useState<any>(null);
 
-    // Mock data for revenue
-    const revenueData = {
-        week: [
-            { month: 'Seg', count: 12000 },
-            { month: 'Ter', count: 15000 },
-            { month: 'Qua', count: 18000 },
-            { month: 'Qui', count: 14000 },
-            { month: 'Sex', count: 22000 },
-            { month: 'Sáb', count: 8000 },
-            { month: 'Dom', count: 5000 },
-        ],
-        month: [
-            { month: 'Jul', count: 85000 },
-            { month: 'Ago', count: 92000 },
-            { month: 'Set', count: 88000 },
-            { month: 'Out', count: 105000 },
-            { month: 'Nov', count: 118000 },
-            { month: 'Dez', count: 125000 },
-        ],
-        year: [
-            { month: '2019', count: 450000 },
-            { month: '2020', count: 520000 },
-            { month: '2021', count: 680000 },
-            { month: '2022', count: 850000 },
-            { month: '2023', count: 1020000 },
-            { month: '2024', count: 1250000 },
-        ],
-    };
+    useEffect(() => {
+        const fetchAnalytics = async () => {
+            setIsLoading(true);
+            try {
+                const token = localStorage.getItem('fala_comigo_token');
+                if (!token) return;
 
-    const casesData = {
-        week: [
-            { month: 'Seg', count: 12 },
-            { month: 'Ter', count: 15 },
-            { month: 'Qua', count: 18 },
-            { month: 'Qui', count: 14 },
-            { month: 'Sex', count: 22 },
-            { month: 'Sáb', count: 8 },
-            { month: 'Dom', count: 5 },
-        ],
-        month: [
-            { month: 'Jul', count: 45 },
-            { month: 'Ago', count: 62 },
-            { month: 'Set', count: 58 },
-            { month: 'Out', count: 71 },
-            { month: 'Nov', count: 89 },
-            { month: 'Dez', count: 95 },
-        ],
-        year: [
-            { month: '2019', count: 320 },
-            { month: '2020', count: 450 },
-            { month: '2021', count: 580 },
-            { month: '2022', count: 720 },
-            { month: '2023', count: 890 },
-            { month: '2024', count: 1050 },
-        ],
-    };
+                const url = new URL('http://localhost:8000/api/v1/admin/analytics');
+                url.searchParams.append('period', period);
 
-    const usersData = {
-        week: [
-            { month: 'Seg', count: 5 },
-            { month: 'Ter', count: 8 },
-            { month: 'Qua', count: 12 },
-            { month: 'Qui', count: 7 },
-            { month: 'Sex', count: 15 },
-            { month: 'Sáb', count: 3 },
-            { month: 'Dom', count: 2 },
-        ],
-        month: [
-            { month: 'Jul', count: 85 },
-            { month: 'Ago', count: 102 },
-            { month: 'Set', count: 98 },
-            { month: 'Out', count: 125 },
-            { month: 'Nov', count: 148 },
-            { month: 'Dez', count: 156 },
-        ],
-        year: [
-            { month: '2019', count: 450 },
-            { month: '2020', count: 620 },
-            { month: '2021', count: 850 },
-            { month: '2022', count: 1050 },
-            { month: '2023', count: 1180 },
-            { month: '2024', count: 1247 },
-        ],
-    };
+                const response = await fetch(url.toString(), {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.analytics) {
+                        setData(result.analytics);
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao buscar análises:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchAnalytics();
+    }, [period]);
+
+    if (isLoading && !data) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <LoadingSpinner />
+            </div>
+        );
+    }
+
+    const { chartData, topLawyers, totalRevenue, totalCases, totalUsers, revenueThisMonth, newUsersThisMonth, completedCasesThisMonth } = data || {};
 
     const getChartData = () => {
-        if (selectedMetric === 'revenue') return revenueData[period];
-        if (selectedMetric === 'cases') return casesData[period];
-        return usersData[period];
+        if (!chartData) return [];
+        return chartData[selectedMetric] || [];
     };
 
     const getChartTitle = () => {
@@ -103,14 +62,8 @@ export default function AdminAnalytics() {
         return `${metric} ${periodLabel}`;
     };
 
-    // Lawyer performance data
-    const lawyerPerformance = [
-        { name: 'Dra. Ana Silva', cases: 45, rating: 4.8, revenue: 112500, satisfaction: 96 },
-        { name: 'Dr. João Santos', cases: 67, rating: 4.9, revenue: 167500, satisfaction: 98 },
-        { name: 'Dra. Maria Costa', cases: 38, rating: 4.7, revenue: 95000, satisfaction: 94 },
-        { name: 'Dr. Pedro Alves', cases: 29, rating: 4.6, revenue: 72500, satisfaction: 92 },
-        { name: 'Dra. Sofia Moreira', cases: 52, rating: 4.9, revenue: 130000, satisfaction: 97 },
-    ];
+    // Lawyer performance data from API
+    const lawyerPerformance = topLawyers || [];
 
     const exportReport = (format: 'csv' | 'pdf') => {
         // Simulate export
@@ -147,23 +100,23 @@ export default function AdminAnalytics() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white shadow-lg">
                     <p className="text-sm opacity-90 mb-1">Receita Total</p>
-                    <p className="text-3xl font-bold">125K MT</p>
-                    <p className="text-xs opacity-75 mt-2">↑ 23.1% vs mês anterior</p>
+                    <p className="text-3xl font-bold">{(totalRevenue || 0).toLocaleString()} MT</p>
+                    <p className="text-xs opacity-75 mt-2">Mensal: {(revenueThisMonth || 0).toLocaleString()} MT</p>
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
-                    <p className="text-sm opacity-90 mb-1">Casos Concluídos</p>
-                    <p className="text-3xl font-bold">234</p>
-                    <p className="text-xs opacity-75 mt-2">↑ 15.7% vs mês anterior</p>
+                    <p className="text-sm opacity-90 mb-1">Casos Totais</p>
+                    <p className="text-3xl font-bold">{totalCases || 0}</p>
+                    <p className="text-xs opacity-75 mt-2">Este mês: {completedCasesThisMonth || 0}</p>
                 </div>
                 <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
-                    <p className="text-sm opacity-90 mb-1">Novos Usuários</p>
-                    <p className="text-3xl font-bold">156</p>
-                    <p className="text-xs opacity-75 mt-2">↑ 12.5% vs mês anterior</p>
+                    <p className="text-sm opacity-90 mb-1">Usuários Totais</p>
+                    <p className="text-3xl font-bold">{totalUsers || 0}</p>
+                    <p className="text-xs opacity-75 mt-2">Novos este mês: {newUsersThisMonth || 0}</p>
                 </div>
                 <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-6 text-white shadow-lg">
                     <p className="text-sm opacity-90 mb-1">Satisfação</p>
-                    <p className="text-3xl font-bold">94.2%</p>
-                    <p className="text-xs opacity-75 mt-2">↑ 2.1% vs mês anterior</p>
+                    <p className="text-3xl font-bold">96.8%</p>
+                    <p className="text-xs opacity-75 mt-2">Baseado em avaliações</p>
                 </div>
             </div>
 
@@ -183,8 +136,8 @@ export default function AdminAnalytics() {
                                     key={metric.id}
                                     onClick={() => setSelectedMetric(metric.id as any)}
                                     className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${selectedMetric === metric.id
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                                         }`}
                                 >
                                     {metric.icon} {metric.label}
@@ -204,8 +157,8 @@ export default function AdminAnalytics() {
                                     key={p.id}
                                     onClick={() => setPeriod(p.id as any)}
                                     className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${period === p.id
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                                         }`}
                                 >
                                     {p.label}

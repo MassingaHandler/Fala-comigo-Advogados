@@ -8,7 +8,7 @@ from database import get_db
 from modelos.usuarios import User
 from modelos.advogados import Lawyer
 from servicos.autenticacao import verify_token
-from typing import Optional
+from typing import Optional, Union
 
 # Security scheme
 security = HTTPBearer()
@@ -59,6 +59,70 @@ async def get_current_user(
         )
     
     return user
+
+
+async def get_current_active_entity(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Union[User, Lawyer]:
+    """
+    Dependency para obter a entidade atual (Usuário ou Advogado) a partir do token JWT.
+    Útil para rotas compartilhadas.
+    """
+    token = credentials.credentials
+    
+    # Verificar token
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido ou expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Obter id e role do payload
+    entity_id: str = payload.get("sub")
+    role: str = payload.get("role", "user")
+    
+    if not entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if role == "lawyer":
+        # Buscar advogado no banco
+        lawyer = db.query(Lawyer).filter(Lawyer.lawyer_id == entity_id).first()
+        if not lawyer:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Advogado não encontrado"
+            )
+        
+        if not lawyer.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Advogado inativo"
+            )
+        
+        return lawyer
+    else:
+        # Buscar usuário no banco
+        user = db.query(User).filter(User.id == entity_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuário não encontrado"
+            )
+        
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Usuário inativo"
+            )
+        
+        return user
 
 
 async def get_current_admin(

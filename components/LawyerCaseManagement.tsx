@@ -169,7 +169,12 @@ export default function LawyerCaseManagement({ cases, onStartChat, onViewDetails
                                                     ID: <span className="font-mono font-semibold">{order.human_id}</span>
                                                 </p>
                                             </div>
-                                            {getStatusBadge(order.status)}
+                                            {getStatusBadge(order.status as OrderStatus)}
+                                            {order.followUpRequested && (
+                                                <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 rounded-full text-xs font-bold animate-pulse">
+                                                    📌 Acompanhamento Solicitado
+                                                </span>
+                                            )}
                                         </div>
 
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">

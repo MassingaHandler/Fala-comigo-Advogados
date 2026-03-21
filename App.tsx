@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Breadcrumbs from './components/Breadcrumbs';
 import LoginPage from './components/LoginPage';
 import Navbar from './components/Navbar';
+import UserLayout from './components/UserLayout';
 import UserDashboard from './components/UserDashboard';
 import NewConsultationWizard from './components/NewConsultationWizard';
 import FollowUpWizard from './components/FollowUpWizard';
@@ -17,6 +18,7 @@ import OrderConfirmation from './components/OrderConfirmation';
 import PhoneConsultationView from './components/PhoneConsultationView';
 import RatingView from './components/RatingView';
 import HistoryView from './components/HistoryView';
+import ProfileView from './components/ProfileView';
 import AdminSettings from './components/AdminSettings';
 import LawyerRegistrationWizard from './components/LawyerRegistrationWizard';
 import LawyerRegistrationSuccess from './components/LawyerRegistrationSuccess';
@@ -27,6 +29,7 @@ import LawyerManagement from './components/admin/LawyerManagement';
 import CaseManagement from './components/admin/CaseManagement';
 import PaymentManagement from './components/admin/PaymentManagement';
 import AdminAnalytics from './components/admin/AdminAnalytics';
+import LawyerApplications from './components/admin/LawyerApplications';
 import AdminLayout from './components/AdminLayout';
 import LawyerPortal from './components/LawyerPortal';
 import LandingPage from './components/LandingPage';
@@ -53,12 +56,67 @@ function AppContent() {
 
     useEffect(() => {
         const loadHistory = async () => {
-            if (isSupabaseConfigured() && isAuthenticated) {
+            if (isAuthenticated) {
                 try {
-                    const { data, error } = await supabase.from('orders').select('*').eq('user_id', 'user_01');
-                    if (data && !error) console.log("Loaded history:", data);
-                } catch (e) {
-                    console.error("Error loading history", e);
+                    // Obter dados do usuário do localStorage
+                    const userStr = localStorage.getItem('fala_comigo_user');
+                    const token = localStorage.getItem('fala_comigo_token');
+
+                    if (!userStr || !token) return;
+
+                    const user = JSON.parse(userStr);
+
+                    // Buscar consultas do backend
+                    const response = await fetch(`http://localhost:8000/api/v1/consultations/users/${user.id}/consultations`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success && result.data) {
+                            // Converter dados do backend para formato do frontend
+                            const orders: Order[] = result.data.map((order: any) => ({
+                                id: order.id,
+                                human_id: order.human_id || order.order_id,
+                                order_id: order.order_id || order.human_id,
+                                user_id: order.user_id,
+                                clientPhoneNumber: order.client_phone_number,
+                                topic: order.topic,
+                                pkg: order.pkg,
+                                consultationType: order.consultation_type,
+                                payment_status: order.payment_status,
+                                payment_method: order.payment_method,
+                                transaction_reference: order.transaction_reference,
+                                status: order.status as OrderStatus,
+                                createdAt: new Date(order.created_at),
+                                termsAccepted: true,
+                                assignment: order.assignment ? {
+                                    assignment_id: order.assignment.assignment_id,
+                                    lawyer: order.assignment.lawyer,
+                                    assignedAt: new Date(order.assignment.assigned_at),
+                                    session: order.assignment.session ? {
+                                        ...order.assignment.session,
+                                        startTime: new Date(order.assignment.session.startTime),
+                                        messages: (order.assignment.session.messages || []).map((m: any) => ({
+                                            ...m,
+                                            timestamp: new Date(m.timestamp)
+                                        })),
+                                        documents: (order.assignment.session.documents || []).map((d: any) => ({
+                                            ...d,
+                                            uploadedAt: new Date(d.uploadedAt)
+                                        }))
+                                    } : undefined
+                                } : undefined
+                            }));
+
+                            setOrderHistory(orders);
+                            console.log('Consultas carregadas:', orders);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar histórico:', error);
                 }
             }
         };
@@ -140,13 +198,21 @@ function AppContent() {
         navigate('/dashboard');
     };
 
-    const handleStartChat = () => {
-        if (activeOrder?.consultationType === 'phone') {
+    const handleStartChat = (order?: Order) => {
+        const targetOrder = order || activeOrder;
+        if (!targetOrder) return;
+
+        // Se o order passado é diferente do activeOrder, atualiza o activeOrder
+        if (order && order.id !== activeOrder?.id) {
+            setActiveOrder(order);
+        }
+
+        if (targetOrder.consultationType === 'phone') {
             navigate('/chamada-telefonica');
         } else {
-            if (activeOrder && isSupabaseConfigured()) {
+            if (targetOrder && isSupabaseConfigured()) {
                 const channel = supabase.channel('realtime-messages').on('postgres_changes', {
-                    event: 'INSERT', schema: 'public', table: 'messages', filter: `order_id=eq.${activeOrder.id}`
+                    event: 'INSERT', schema: 'public', table: 'messages', filter: `order_id=eq.${targetOrder.id}`
                 }, (payload) => {
                     const newMsg = payload.new;
                     const chatMsg: any = {
@@ -226,12 +292,17 @@ function AppContent() {
             )}
 
             <Routes>
+                {/* Public Routes */}
                 <Route path="/" element={
-                    isAuthenticated ? <Navigate to="/dashboard" replace /> : <LandingPage />
+                    isAuthenticated ?
+                        (isAdmin ? <Navigate to="/admin/dashboard" replace /> : <Navigate to="/dashboard" replace />) :
+                        <LandingPage />
                 } />
 
                 <Route path="/login" element={
-                    isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage onRegisterClick={() => navigate('/registro')} />
+                    isAuthenticated ?
+                        (isAdmin ? <Navigate to="/admin/dashboard" replace /> : <Navigate to="/dashboard" replace />) :
+                        <LoginPage onRegisterClick={() => navigate('/registro')} />
                 } />
 
                 <Route path="/registro" element={
@@ -252,87 +323,70 @@ function AppContent() {
 
                 <Route path="/registro-advogado/sucesso" element={<LawyerRegistrationSuccess />} />
 
-                <Route path="/portal-advogado" element={
-                    <LawyerPortal onBack={() => navigate('/login')} />
-                } />
+                <Route path="/portal-advogado" element={<LawyerPortal onBack={() => navigate('/login')} />} />
 
-                <Route path="/dashboard" element={
+                {/* User Dashboard Routes with Layout */}
+                <Route element={
                     <ProtectedRoute>
-                        {isAdmin ? <Navigate to="/admin/dashboard" replace /> : (
-                            <UserDashboard
-                                onNewConsultation={() => navigate('/nova-consulta')}
-                                onHistory={() => navigate('/historico')}
-                                onFollowUp={() => navigate('/acompanhamento')}
-                                onStatusCheck={() => navigate('/verificar-estado')}
-                                orderHistory={orderHistory}
-                            />
-                        )}
+                        {!isAdmin ? <UserLayout /> : <Navigate to="/admin/dashboard" replace />}
                     </ProtectedRoute>
-                } />
+                }>
+                    <Route path="dashboard" element={
+                        <UserDashboard
+                            onNewConsultation={() => navigate('/nova-consulta')}
+                            onHistory={() => navigate('/historico')}
+                            onFollowUp={() => navigate('/acompanhamento')}
+                            orderHistory={orderHistory}
+                        />
+                    } />
+                    <Route path="historico" element={
+                        <HistoryView
+                            orders={orderHistory}
+                            onSelectOrder={(o) => { setActiveOrder(o); navigate('/verificar-estado'); }}
+                            onBack={() => navigate('/dashboard')}
+                        />
+                    } />
+                    <Route path="verificar-estado" element={
+                        <StatusChecker
+                            order={activeOrder}
+                            onStartChat={handleStartChat}
+                            onBack={() => navigate('/dashboard')}
+                        />
+                    } />
+                    <Route path="perfil" element={<ProfileView />} />
 
-                <Route path="/nova-consulta" element={
-                    <ProtectedRoute>
-                        <Navbar onAdminClick={() => navigate('/admin')} />
-                        <div className="container-responsive py-6">
+                    <Route path="nova-consulta" element={
+                        <div className="w-full py-6">
                             <Breadcrumbs />
                             <NewConsultationWizard onComplete={(t, p, type) => handleInitiateOrder(t, p, type)} onBack={() => navigate('/dashboard')} />
                         </div>
-                    </ProtectedRoute>
-                } />
+                    } />
 
-                <Route path="/acompanhamento" element={
-                    <ProtectedRoute>
-                        <Navbar onAdminClick={() => navigate('/admin')} />
-                        <div className="container-responsive py-6">
+                    <Route path="acompanhamento" element={
+                        <div className="w-full py-6">
                             <Breadcrumbs />
                             <FollowUpWizard findOrder={findOrder} onComplete={(t, p, type, prevOrder) => handleInitiateOrder(t, p, type, prevOrder)} onBack={() => navigate('/dashboard')} />
                         </div>
-                    </ProtectedRoute>
-                } />
+                    } />
 
-                <Route path="/verificar-estado" element={
-                    <ProtectedRoute>
-                        <Navbar onAdminClick={() => navigate('/admin')} />
-                        <div className="container-responsive py-6">
-                            <Breadcrumbs />
-                            <StatusChecker order={activeOrder} onStartChat={handleStartChat} onBack={() => navigate('/dashboard')} />
-                        </div>
-                    </ProtectedRoute>
-                } />
-
-                <Route path="/historico" element={
-                    <ProtectedRoute>
-                        <Navbar onAdminClick={() => navigate('/admin')} />
-                        <div className="container-responsive py-6">
-                            <Breadcrumbs />
-                            <HistoryView orders={orderHistory} onSelectOrder={(o) => { setActiveOrder(o); navigate('/verificar-estado'); }} onBack={() => navigate('/dashboard')} />
-                        </div>
-                    </ProtectedRoute>
-                } />
-
-                <Route path="/chat" element={
-                    <ProtectedRoute>
-                        <Navbar onAdminClick={() => navigate('/admin')} />
-                        <div className="container-responsive py-6">
+                    <Route path="chat" element={
+                        <div className="w-full py-6 h-full flex flex-col">
                             <Breadcrumbs />
                             {activeOrder ? <ChatView order={activeOrder} onUpdateOrder={handleUpdateOrder} onEndSession={handleEndSession} /> : <Navigate to="/dashboard" replace />}
                         </div>
-                    </ProtectedRoute>
-                } />
+                    } />
+
+                    <Route path="avaliacao" element={
+                        <div className="max-w-2xl mx-auto py-6">
+                            <Breadcrumbs />
+                            {activeOrder ? <RatingView order={activeOrder} onSubmit={handleSubmitRating} /> : <Navigate to="/dashboard" replace />}
+                        </div>
+                    } />
+                </Route>
 
                 <Route path="/chamada-telefonica" element={
                     <ProtectedRoute>
                         {activeOrder ? <PhoneConsultationView order={activeOrder} onFinish={handleEndSession} /> : <Navigate to="/dashboard" replace />}
-                    </ProtectedRoute>
-                } />
-
-                <Route path="/avaliacao" element={
-                    <ProtectedRoute>
-                        <Navbar onAdminClick={() => navigate('/admin')} />
-                        <div className="container-responsive py-6">
-                            <Breadcrumbs />
-                            {activeOrder ? <RatingView order={activeOrder} onSubmit={handleSubmitRating} /> : <Navigate to="/dashboard" replace />}
-                        </div>
                     </ProtectedRoute>
                 } />
 
@@ -346,6 +400,7 @@ function AppContent() {
                     <Route path="dashboard" element={<AdminDashboard />} />
                     <Route path="users" element={<UserManagement />} />
                     <Route path="lawyers" element={<LawyerManagement />} />
+                    <Route path="lawyer-applications" element={<LawyerApplications />} />
                     <Route path="cases" element={<CaseManagement />} />
                     <Route path="payments" element={<PaymentManagement />} />
                     <Route path="analytics" element={<AdminAnalytics />} />

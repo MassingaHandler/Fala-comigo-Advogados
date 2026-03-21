@@ -13,7 +13,7 @@ from database import get_db
 from modelos.mensagens import ChatMessage, Document
 from modelos.consultas import Order
 from servicos.upload import save_upload_file
-from utils.dependencias import get_current_user
+from utils.dependencias import get_current_user, get_current_active_entity
 
 router = APIRouter(prefix="/consultations", tags=["Chat"])
 
@@ -28,7 +28,7 @@ class SendMessageRequest(BaseModel):
 async def send_message(
     order_id: str,
     request: SendMessageRequest,
-    current_user = Depends(get_current_user),
+    current_entity = Depends(get_current_active_entity),
     db: Session = Depends(get_db)
 ):
     """Enviar mensagem"""
@@ -41,7 +41,8 @@ async def send_message(
         )
     
     # Determinar sender
-    sender = "user" if str(current_user.id) == request.sender_id else "lawyer"
+    current_id = getattr(current_entity, 'id', getattr(current_entity, 'lawyer_id', None))
+    sender = "user" if str(current_id) == request.sender_id else "lawyer"
     
     # Criar mensagem
     message = ChatMessage(
@@ -67,7 +68,7 @@ async def upload_document(
     order_id: str,
     sender_id: str,
     file: UploadFile = File(...),
-    current_user = Depends(get_current_user),
+    current_entity = Depends(get_current_active_entity),
     db: Session = Depends(get_db)
 ):
     """Enviar documento"""
@@ -101,7 +102,8 @@ async def upload_document(
     db.refresh(document)
     
     # Criar mensagem de documento
-    sender = "user" if str(current_user.id) == sender_id else "lawyer"
+    current_id = getattr(current_entity, 'id', getattr(current_entity, 'lawyer_id', None))
+    sender = "user" if str(current_id) == sender_id else "lawyer"
     message = ChatMessage(
         order_id=order_id,
         sender_id=sender_id,
@@ -125,7 +127,7 @@ async def upload_document(
 async def get_messages(
     order_id: str,
     limit: int = 50,
-    current_user = Depends(get_current_user),
+    current_entity = Depends(get_current_active_entity),
     db: Session = Depends(get_db)
 ):
     """Obter mensagens da consulta"""

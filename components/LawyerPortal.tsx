@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScaleIcon, HomeIcon, BriefcaseIcon, ClockIcon, UserIcon, LogOutIcon } from './ui/icons';
 import { DollarSignIcon } from './ui/dashboard-icons';
 import LawyerDashboard from './LawyerDashboard';
@@ -7,6 +7,7 @@ import LawyerChatView from './LawyerChatView';
 import LawyerHistoryView from './LawyerHistoryView';
 import LawyerFinancials from './LawyerFinancials';
 import LawyerProfile from './LawyerProfile';
+import LawyerCaseDetailsModal from './LawyerCaseDetailsModal';
 import type { Order, Lawyer, ChatMessage } from '../types';
 import { OrderStatus } from '../types';
 
@@ -20,156 +21,126 @@ export default function LawyerPortal({ onBack }: Props) {
     const [view, setView] = useState<View>('login');
     const [loading, setLoading] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [consultations, setConsultations] = useState<Order[]>([]);
+    const [currentLawyer, setCurrentLawyer] = useState<Lawyer | null>(null);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
-    // Mock lawyer data
-    const mockLawyer: Lawyer = {
-        lawyer_id: 'lawyer-001',
-        nome: 'Dr. João Silva',
-        especialidade: 'Direito de Família',
-        avatarUrl: 'https://ui-avatars.com/api/?name=Joao+Silva&background=4f46e5&color=fff',
-        phoneNumber: '+258 84 123 4567',
-        oamNumber: '1234/OAM',
-        isOnline: true,
-        rating: 4.8,
-        totalReviews: 127,
-    };
+    // Buscar casos do advogado quando autenticado
+    useEffect(() => {
+        const fetchLawyerCases = async () => {
+            if (view !== 'login' && view !== 'register' && currentLawyer) {
+                try {
+                    const token = localStorage.getItem('fala_comigo_token');
+                    if (!token) return;
 
-    // Mock consultation data
-    const mockConsultations: Order[] = [
-        {
-            id: 'order-001',
-            human_id: 'FC-123456',
-            order_id: 'FC-123456',
-            user_id: 'user-001',
-            topic: { id: '1', name: 'Divórcio', icon: null },
-            pkg: { id: '1', name: 'Consulta Digital', type: 'consultation', price: 2500, description: 'Chat' },
-            consultationType: 'digital',
-            payment_status: 'confirmed',
-            status: OrderStatus.ASSIGNED,
-            createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-            assignment: {
-                assignment_id: 'assign-001',
-                lawyer: mockLawyer,
-                assignedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-                session: {
-                    session_id: 'session-001',
-                    startTime: new Date(),
-                    messages: [
-                        {
-                            id: 'msg-001',
-                            sender: 'user',
-                            text: 'Olá, preciso de ajuda com um processo de divórcio.',
-                            timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000),
-                            type: 'text',
+                    // Buscar assignments do advogado
+                    const response = await fetch(`http://localhost:8000/api/v1/lawyers/${currentLawyer.lawyer_id}/assignments`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
                         }
-                    ],
-                    documents: [],
-                }
-            }
-        },
-        {
-            id: 'order-002',
-            human_id: 'FC-123457',
-            order_id: 'FC-123457',
-            user_id: 'user-002',
-            topic: { id: '2', name: 'Direito do Trabalho', icon: null },
-            pkg: { id: '2', name: 'Consulta Telefónica', type: 'consultation', price: 3000, description: 'Telefone' },
-            consultationType: 'phone',
-            payment_status: 'confirmed',
-            status: OrderStatus.IN_PROGRESS,
-            createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
-            assignment: {
-                assignment_id: 'assign-002',
-                lawyer: mockLawyer,
-                assignedAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
-                session: {
-                    session_id: 'session-002',
-                    startTime: new Date(),
-                    messages: [],
-                    documents: [],
-                }
-            }
-        },
-        {
-            id: 'order-003',
-            human_id: 'FC-123458',
-            order_id: 'FC-123458',
-            user_id: 'user-003',
-            topic: { id: '3', name: 'Direito Criminal', icon: null },
-            pkg: { id: '1', name: 'Consulta Digital', type: 'consultation', price: 2500, description: 'Chat' },
-            consultationType: 'digital',
-            payment_status: 'confirmed',
-            status: OrderStatus.COMPLETED,
-            createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-            assignment: {
-                assignment_id: 'assign-003',
-                lawyer: mockLawyer,
-                assignedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-                session: {
-                    session_id: 'session-003',
-                    startTime: new Date(),
-                    messages: [],
-                    documents: [],
-                }
-            }
-        },
-        {
-            id: 'order-004',
-            human_id: 'FC-123459',
-            order_id: 'FC-123459',
-            user_id: 'user-004',
-            topic: { id: '1', name: 'Pensão Alimentícia', icon: null },
-            pkg: { id: '1', name: 'Consulta Digital', type: 'consultation', price: 2500, description: 'Chat' },
-            consultationType: 'digital',
-            payment_status: 'confirmed',
-            status: OrderStatus.COMPLETED,
-            createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
-            assignment: {
-                assignment_id: 'assign-004',
-                lawyer: mockLawyer,
-                assignedAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
-                session: {
-                    session_id: 'session-004',
-                    startTime: new Date(),
-                    messages: [],
-                    documents: [],
-                }
-            }
-        },
-        {
-            id: 'order-005',
-            human_id: 'FC-123460',
-            order_id: 'FC-123460',
-            user_id: 'user-005',
-            topic: { id: '4', name: 'Contrato de Trabalho', icon: null },
-            pkg: { id: '2', name: 'Consulta Telefónica', type: 'consultation', price: 3000, description: 'Telefone' },
-            consultationType: 'phone',
-            payment_status: 'confirmed',
-            status: OrderStatus.ASSIGNED,
-            createdAt: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
-            assignment: {
-                assignment_id: 'assign-005',
-                lawyer: mockLawyer,
-                assignedAt: new Date(Date.now() - 30 * 60 * 1000),
-                session: {
-                    session_id: 'session-005',
-                    startTime: new Date(),
-                    messages: [],
-                    documents: [],
-                }
-            }
-        },
-    ];
+                    });
 
-    const [consultations, setConsultations] = useState<Order[]>(mockConsultations);
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success && result.data) {
+                            // Converter para formato Order
+                            const orders: Order[] = result.data.map((assignment: any) => ({
+                                id: assignment.order.id,
+                                human_id: assignment.order.human_id || assignment.order.order_id,
+                                order_id: assignment.order.order_id || assignment.order.human_id,
+                                user_id: assignment.order.user_id,
+                                clientName: assignment.order.client_name,
+                                clientPhoneNumber: assignment.order.client_phone_number,
+                                topic: assignment.order.topic,
+                                pkg: assignment.order.pkg,
+                                consultationType: assignment.order.consultation_type,
+                                payment_status: assignment.order.payment_status,
+                                payment_method: assignment.order.payment_method,
+                                status: assignment.order.status as OrderStatus,
+                                createdAt: new Date(assignment.order.created_at),
+                                termsAccepted: true,
+                                assignment: {
+                                    assignment_id: assignment.assignment_id,
+                                    lawyer: currentLawyer,
+                                    assignedAt: new Date(assignment.assigned_at),
+                                    session: assignment.session ? {
+                                        session_id: assignment.session.session_id,
+                                        startTime: new Date(assignment.session.start_time),
+                                        messages: assignment.session.messages || [],
+                                        documents: assignment.session.documents || []
+                                    } : undefined
+                                }
+                            }));
 
-    const handleLogin = (e: React.FormEvent) => {
+                            setConsultations(orders);
+                            console.log('Casos do advogado carregados:', orders);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erro ao buscar casos do advogado:', error);
+                }
+            }
+        };
+
+        fetchLawyerCases();
+    }, [view, currentLawyer]);
+
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError('');
         setLoading(true);
-        setTimeout(() => {
+
+        try {
+            // Chamar API de login do backend
+            const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                setError(result.detail || 'Email ou senha incorretos');
+                setLoading(false);
+                return;
+            }
+
+            if (result.success && result.user && result.user.role === 'lawyer') {
+                // Salvar token
+                localStorage.setItem('fala_comigo_token', result.token);
+                localStorage.setItem('fala_comigo_lawyer', JSON.stringify(result.user));
+
+                // Configurar advogado atual
+                const lawyer: Lawyer = {
+                    lawyer_id: result.user.lawyer_id,
+                    nome: result.user.nome,
+                    especialidade: result.user.especialidade,
+                    avatarUrl: result.user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(result.user.nome)}&background=4f46e5&color=fff`,
+                    phoneNumber: result.user.phoneNumber || result.user.professionalPhone,
+                    oamNumber: result.user.oamNumber,
+                    isOnline: result.user.isOnline,
+                    rating: result.user.rating,
+                    totalReviews: result.user.totalReviews
+                };
+
+                setCurrentLawyer(lawyer);
+                setView('dashboard');
+                console.log('Login de advogado bem-sucedido:', lawyer);
+            } else {
+                setError('Esta conta não é de advogado');
+            }
+        } catch (error) {
+            console.error('Erro ao fazer login:', error);
+            setError('Erro ao conectar com o servidor');
+        } finally {
             setLoading(false);
-            setView('dashboard');
-        }, 1500);
+        }
     };
 
     const handleRegister = (e: React.FormEvent) => {
@@ -187,11 +158,40 @@ export default function LawyerPortal({ onBack }: Props) {
         setSelectedOrder(updatedOrder);
     };
 
-    const handleCompleteCase = (order: Order) => {
-        const updatedOrder = { ...order, status: OrderStatus.COMPLETED };
-        handleUpdateOrder(updatedOrder);
-        setView('cases');
-        setSelectedOrder(null);
+    const handleCompleteCase = async (order: Order) => {
+        if (!order) return;
+
+        const confirmed = window.confirm(`Tem certeza que deseja concluir o caso de ${order.clientName || 'Cliente'} (#${order.human_id})?\n\nIsso moverá o caso para o histórico.`);
+        if (!confirmed) return;
+
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('fala_comigo_token');
+            const response = await fetch(`http://localhost:8000/api/v1/consultations/${order.id}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ status: OrderStatus.COMPLETED })
+            });
+
+            if (response.ok) {
+                const updatedOrder = { ...order, status: OrderStatus.COMPLETED };
+                handleUpdateOrder(updatedOrder);
+                setView('cases');
+                setSelectedOrder(null);
+                alert('Caso concluído com sucesso!');
+            } else {
+                const errorData = await response.json();
+                alert(`Erro ao concluir caso: ${errorData.detail || 'Erro desconhecido'}`);
+            }
+        } catch (error) {
+            console.error('Erro ao concluir caso:', error);
+            alert('Erro de conexão ao tentar concluir o caso.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleStartChat = (order: Order) => {
@@ -266,7 +266,7 @@ export default function LawyerPortal({ onBack }: Props) {
                             onProfile={() => setView('profile')}
                             onFinancials={() => setView('financials')}
                             consultationHistory={consultations}
-                            lawyerId={mockLawyer.lawyer_id}
+                            lawyerId={currentLawyer?.lawyer_id || ''}
                         />
                     )}
                     {view === 'cases' && (
@@ -275,7 +275,7 @@ export default function LawyerPortal({ onBack }: Props) {
                             onStartChat={handleStartChat}
                             onViewDetails={(order) => {
                                 setSelectedOrder(order);
-                                // Would open details modal
+                                setIsDetailsModalOpen(true);
                             }}
                             onCompleteCase={handleCompleteCase}
                         />
@@ -301,15 +301,23 @@ export default function LawyerPortal({ onBack }: Props) {
                     {view === 'financials' && (
                         <LawyerFinancials consultationHistory={consultations} />
                     )}
-                    {view === 'profile' && (
+                    {view === 'profile' && currentLawyer && (
                         <LawyerProfile
-                            lawyer={mockLawyer}
+                            lawyer={currentLawyer}
                             onBack={() => setView('dashboard')}
                             onUpdateProfile={(updates) => {
                                 console.log('Profile updated:', updates);
                             }}
                         />
                     )}
+
+                    {/* Modais */}
+                    <LawyerCaseDetailsModal
+                        isOpen={isDetailsModalOpen}
+                        onClose={() => setIsDetailsModalOpen(false)}
+                        order={selectedOrder}
+                        onStartChat={handleStartChat}
+                    />
                 </div>
             </div>
         );
@@ -370,25 +378,40 @@ export default function LawyerPortal({ onBack }: Props) {
 
                     <h2 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-200">Acesso Advogado</h2>
 
+                    {error && (
+                        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                        </div>
+                    )}
+
                     <form onSubmit={handleLogin} className="space-y-5">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email ou Carteira OAM</label>
-                            <input required type="text"
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email Profissional</label>
+                            <input
+                                required
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
                                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                placeholder="exemplo@email.com ou 1234/OAM" />
+                                placeholder="exemplo@email.com" />
                         </div>
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Senha</label>
-                            <input required type="password"
+                            <input
+                                required
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
                                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 placeholder="••••••••" />
                         </div>
 
                         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">Demo:</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">Credenciais de Teste:</p>
                             <p className="text-xs text-blue-600 dark:text-blue-400">
-                                Use qualquer email/senha para testar
+                                Email: joao.silva@example.com<br />
+                                Senha: password123
                             </p>
                         </div>
 
@@ -426,7 +449,7 @@ export default function LawyerPortal({ onBack }: Props) {
                     <p>© 2024 Fala Comigo - Portal do Advogado</p>
                     <p className="mt-1">Plataforma oficial de consultas jurídicas de Moçambique</p>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

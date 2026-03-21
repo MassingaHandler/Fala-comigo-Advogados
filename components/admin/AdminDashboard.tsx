@@ -1,31 +1,62 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StatCard from '../ui/StatCard';
 import ActivityChart from '../ui/ActivityChart';
 import { GavelIcon, CheckCircleIcon, UsersIcon } from '../ui/icons';
 import { TrendingUpIcon } from '../ui/dashboard-icons';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
+    const [isLoading, setIsLoading] = useState(true);
+    const [stats, setStats] = useState({
+        totalUsers: 0,
+        totalLawyers: 0,
+        activeCases: 0,
+        monthlyRevenue: 0,
+        newUsersThisMonth: 0,
+        completedCasesThisMonth: 0,
+        chartData: [] as any[],
+    });
 
-    // Mock data - In production, fetch from API
-    const stats = {
-        totalUsers: 1247,
-        totalLawyers: 45,
-        activeCases: 89,
-        monthlyRevenue: 125000,
-        newUsersThisMonth: 156,
-        completedCasesThisMonth: 234,
-    };
+    useEffect(() => {
+        const fetchDashboardData = async () => {
+            try {
+                const token = localStorage.getItem('fala_comigo_token');
+                if (!token) return;
 
-    const monthlyActivity = [
-        { month: 'Jul', count: 45 },
-        { month: 'Ago', count: 62 },
-        { month: 'Set', count: 58 },
-        { month: 'Out', count: 71 },
-        { month: 'Nov', count: 89 },
-        { month: 'Dez', count: 95 },
-    ];
+                const response = await fetch('http://localhost:8000/api/v1/admin/analytics?period=month', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.analytics) {
+                        const a = result.analytics;
+                        setStats({
+                            totalUsers: a.totalUsers,
+                            totalLawyers: a.totalLawyers,
+                            activeCases: a.activeCases,
+                            monthlyRevenue: a.totalRevenue,
+                            newUsersThisMonth: a.newUsersThisMonth,
+                            completedCasesThisMonth: a.completedCasesThisMonth,
+                            chartData: a.chartData?.cases || [],
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao buscar dados do dashboard:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchDashboardData();
+    }, []);
+
+    const monthlyActivity = stats.chartData;
 
     const recentActivity = [
         { id: 1, type: 'user', message: 'Novo usuário registrado: João Silva', time: 'Há 5 min', icon: '👤' },
@@ -38,11 +69,19 @@ export default function AdminDashboard() {
     const quickActions = [
         { label: 'Gestão de Usuários', route: '/admin/users', icon: '👥', color: 'blue', count: stats.totalUsers },
         { label: 'Gestão de Advogados', route: '/admin/lawyers', icon: '⚖️', color: 'purple', count: stats.totalLawyers },
-        { label: 'Gestão de Pagamentos', route: '/admin/payments', icon: '💳', color: 'green', count: '125K MT' },
+        { label: 'Gestão de Pagamentos', route: '/admin/payments', icon: '💳', color: 'green', count: `${(stats.monthlyRevenue / 1000).toFixed(1)}K MT` },
         { label: 'Gestão de Casos', route: '/admin/cases', icon: '📋', color: 'orange', count: stats.activeCases },
         { label: 'Relatórios', route: '/admin/analytics', icon: '📊', color: 'indigo', count: 'Ver' },
         { label: 'Configurações', route: '/admin/settings', icon: '⚙️', color: 'gray', count: 'Editar' },
     ];
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <LoadingSpinner />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-fade-in">

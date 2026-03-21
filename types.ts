@@ -12,6 +12,7 @@ export interface Lawyer {
   isOnline?: boolean;
   rating?: number; // Average rating
   totalReviews?: number;
+  casesCompleted?: number; // Total cases completed
 }
 
 export interface LawyerStats {
@@ -53,6 +54,7 @@ export interface Order {
   order_id: string; // Legacy alias for human_id to minimize refactor
   parent_order_id?: string; // UUID of parent
   user_id: string;
+  clientName?: string;
   clientPhoneNumber?: string; // Number used for M-Pesa payment
   topic: ServiceTopic;
   pkg: ConsultationPackage;
@@ -62,6 +64,8 @@ export interface Order {
   transaction_reference?: string; // M-Pesa Transaction ID
   status: OrderStatus | string; // Allow string for DB mapping
   assignment?: Assignment;
+  lawyerNotes?: string;
+  followUpRequested?: boolean;
   createdAt: Date;
   termsAccepted?: boolean; // For follow-ups
 }
@@ -119,10 +123,24 @@ export interface User {
   birthDate: Date;
   nationality: string;
   gender?: 'masculino' | 'feminino' | 'outro';
+  occupation?: string;
 
-  // Identificação
+  // Identificação & KYC
   documentType: DocumentType;
   documentNumber: string;
+  nuit?: string;
+  documentIssueDate?: Date;
+  documentExpiryDate?: Date;
+
+  // Documentos (URLs)
+  documentFrontUrl?: string;
+  documentBackUrl?: string;
+  selfieUrl?: string;
+
+  // KYC Status
+  kycStatus?: 'pending' | 'approved' | 'rejected' | 'not_submitted';
+  kycNotes?: string;
+  kycVerifiedAt?: Date;
 
   // Contato
   phoneNumber: string;
@@ -132,6 +150,7 @@ export interface User {
   address?: {
     neighborhood?: string;
     city?: string;
+    street?: string;
     country: string;
   };
 

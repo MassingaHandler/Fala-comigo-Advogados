@@ -93,6 +93,18 @@ export default function NewConsultationWizard({ onComplete, onBack }: Props) {
 
         const user = JSON.parse(userStr);
 
+        // Validar se user.id é um UUID válido
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!user.id || !uuidRegex.test(user.id)) {
+          console.error('ID de usuário inválido:', user.id);
+          alert('Erro: Sessão inválida. Por favor, faça login novamente.');
+          // Limpar localStorage
+          localStorage.removeItem('fala_comigo_user');
+          localStorage.removeItem('fala_comigo_token');
+          window.location.href = '/login';
+          return;
+        }
+
         // Preparar dados da consulta
         const consultationData = {
           user_id: user.id,
@@ -112,6 +124,8 @@ export default function NewConsultationWizard({ onComplete, onBack }: Props) {
           selectedLawyerId: selectedLawyer === 'auto' ? 'auto' : (selectedLawyer as Lawyer)?.lawyer_id || 'auto'
         };
 
+        console.log('Enviando consulta:', consultationData);
+
         // Chamar API
         const response = await fetch('http://localhost:8000/api/v1/consultations', {
           method: 'POST',
@@ -125,8 +139,11 @@ export default function NewConsultationWizard({ onComplete, onBack }: Props) {
         const result = await response.json();
 
         if (!response.ok) {
+          console.error('Erro da API:', result);
           throw new Error(result.detail || 'Erro ao criar consulta');
         }
+
+        console.log('Consulta criada com sucesso:', result);
 
         // Sucesso! Chamar onComplete
         onComplete(selectedTopic, selectedPackage, selectedType);
@@ -223,6 +240,18 @@ export default function NewConsultationWizard({ onComplete, onBack }: Props) {
                 </button>
               ))}
             </div>
+          </div>
+        );
+      case 'lawyer':
+        return (
+          <div className={`transition-all duration-500 ease-out transform ${animationClass}`}>
+            <LawyerSelection
+              lawyers={availableLawyers}
+              loading={loadingLawyers}
+              onSelectLawyer={handleSelectLawyer}
+              onSelectAuto={() => handleSelectLawyer('auto')}
+              topicName={selectedTopic?.name || ''}
+            />
           </div>
         );
       case 'package':

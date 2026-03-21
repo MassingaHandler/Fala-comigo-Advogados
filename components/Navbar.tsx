@@ -4,6 +4,7 @@ import { MozambiqueFlagIcon, SettingsIcon, UserIcon } from './ui/icons';
 
 interface Props {
     onAdminClick?: () => void;
+    hideLogo?: boolean;
 }
 
 const LogoutIcon = ({ className }: { className?: string }) => (
@@ -14,22 +15,24 @@ const LogoutIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-export default function Navbar({ onAdminClick }: Props) {
+export default function Navbar({ onAdminClick, hideLogo }: Props) {
     const { user, logout, isAdmin } = useAuth();
     const [showUserMenu, setShowUserMenu] = React.useState(false);
 
     return (
         <nav className="bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
                     {/* Logo */}
-                    <div className="flex items-center gap-3">
-                        <MozambiqueFlagIcon className="w-8 h-8" />
-                        <div>
-                            <h1 className="text-xl font-bold text-red-600 dark:text-red-500">Fala Comigo</h1>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">Advocacia Digital</p>
+                    {!hideLogo ? (
+                        <div className="flex items-center gap-3">
+                            <MozambiqueFlagIcon className="w-8 h-8" />
+                            <div>
+                                <h1 className="text-xl font-bold text-red-600 dark:text-red-500">Fala Comigo</h1>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">Advocacia Digital</p>
+                            </div>
                         </div>
-                    </div>
+                    ) : <div />}
 
                     {/* User Menu */}
                     <div className="flex items-center gap-4">

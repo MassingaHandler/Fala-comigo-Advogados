@@ -40,15 +40,15 @@ if os.path.exists(settings.UPLOAD_DIR):
 @app.on_event("startup")
 async def startup_event():
     """Executado ao iniciar a aplicação"""
-    print("🚀 Iniciando Fala Comigo Advogado API...")
-    print(f"📊 Ambiente: {settings.ENVIRONMENT}")
-    print(f"🔧 Debug: {settings.DEBUG}")
+    print("Iniciando Fala Comigo Advogado API...")
+    print(f"Ambiente: {settings.ENVIRONMENT}")
+    print(f"Debug: {settings.DEBUG}")
     
     # Inicializar banco de dados
     init_db()
     
-    print("✅ API iniciada com sucesso!")
-    print(f"📖 Documentação: http://localhost:8000{settings.API_PREFIX}/docs")
+    print("API iniciada com sucesso!")
+    print(f"Documentacao: http://localhost:8000{settings.API_PREFIX}/docs")
 
 
 @app.get("/")
@@ -90,7 +90,12 @@ app.include_router(consultations_router, prefix=settings.API_PREFIX)
 app.include_router(payments_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
 app.include_router(ratings_router, prefix=settings.API_PREFIX)
-app.include_router(admin_router, prefix=settings.API_PREFIX)
+app.include_router(admin_router, prefix=f"{settings.API_PREFIX}/admin")
+
+@app.on_event("startup")
+async def list_routes():
+    for route in app.routes:
+        print(f"Path: {route.path}")
 
 
 if __name__ == "__main__":

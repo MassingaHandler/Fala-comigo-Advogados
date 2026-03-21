@@ -23,6 +23,14 @@ class Gender(str, enum.Enum):
     OUTRO = "outro"
 
 
+class KYCStatus(str, enum.Enum):
+    """Status da Verificação de KYC"""
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    NOT_SUBMITTED = "not_submitted"
+
+
 class User(Base):
     """Modelo de Usuário"""
     __tablename__ = "users"
@@ -35,10 +43,25 @@ class User(Base):
     birth_date = Column(DateTime, nullable=False)
     nationality = Column(String(100), nullable=False)
     gender = Column(Enum(Gender), nullable=True)
+    occupation = Column(String(100), nullable=True)
     
-    # Identificação
+    # Identificação & KYC
     document_type = Column(Enum(DocumentType), nullable=False)
     document_number = Column(String(50), unique=True, nullable=False, index=True)
+    nuit = Column(String(20), unique=True, nullable=True, index=True)
+    
+    document_issue_date = Column(DateTime, nullable=True)
+    document_expiry_date = Column(DateTime, nullable=True)
+    
+    # Documentos (URLs)
+    document_front_url = Column(String(500), nullable=True)
+    document_back_url = Column(String(500), nullable=True)
+    selfie_url = Column(String(500), nullable=True)
+    
+    # KYC Status
+    kyc_status = Column(Enum(KYCStatus), default=KYCStatus.NOT_SUBMITTED)
+    kyc_notes = Column(String(500), nullable=True)
+    kyc_verified_at = Column(DateTime, nullable=True)
     
     # Contato
     phone_number = Column(String(20), unique=True, nullable=False, index=True)
@@ -48,7 +71,7 @@ class User(Base):
     
     # Endereço (JSON)
     address = Column(JSON, nullable=True)
-    # Exemplo: {"neighborhood": "Polana", "city": "Maputo", "country": "Moçambique"}
+    # Exemplo: {"neighborhood": "Polana", "city": "Maputo", "country": "Moçambique", "street": "Av. Eduardo Mondlane"}
     
     # Segurança
     password_hash = Column(String(255), nullable=False)
@@ -79,8 +102,18 @@ class User(Base):
             "birthDate": self.birth_date.isoformat() if self.birth_date else None,
             "nationality": self.nationality,
             "gender": self.gender.value if self.gender else None,
+            "occupation": self.occupation,
             "documentType": self.document_type.value,
             "documentNumber": self.document_number,
+            "nuit": self.nuit,
+            "documentIssueDate": self.document_issue_date.isoformat() if self.document_issue_date else None,
+            "documentExpiryDate": self.document_expiry_date.isoformat() if self.document_expiry_date else None,
+            "documentFrontUrl": self.document_front_url,
+            "documentBackUrl": self.document_back_url,
+            "selfieUrl": self.selfie_url,
+            "kycStatus": self.kyc_status.value if self.kyc_status else "not_submitted",
+            "kycNotes": self.kyc_notes,
+            "kycVerifiedAt": self.kyc_verified_at.isoformat() if self.kyc_verified_at else None,
             "emailVerified": self.email_verified,
             "phoneVerified": self.phone_verified,
             "address": self.address,

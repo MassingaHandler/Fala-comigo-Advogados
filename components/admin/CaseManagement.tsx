@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SearchIcon, FilterIcon } from '../ui/dashboard-icons';
 import { OrderStatus } from '../../types';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
 interface Case {
     id: string;
@@ -16,22 +17,54 @@ interface Case {
 export default function CaseManagement() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('all');
-
-    // Mock data
-    const cases: Case[] = [
-        { id: '1', caseId: 'FC-123456', client: 'João Silva', lawyer: 'Dra. Ana Silva', topic: 'Família', status: OrderStatus.IN_PROGRESS, createdDate: '2024-12-01', amount: 2500 },
-        { id: '2', caseId: 'FC-123457', client: 'Maria Costa', lawyer: 'Dr. João Santos', topic: 'Trabalho', status: OrderStatus.ASSIGNED, createdDate: '2024-12-02', amount: 3000 },
-        { id: '3', caseId: 'FC-123458', client: 'Pedro Santos', lawyer: 'Dra. Maria Costa', topic: 'Terra/DUAT', status: OrderStatus.COMPLETED, createdDate: '2024-11-28', amount: 4500 },
-        { id: '4', caseId: 'FC-123459', client: 'Ana Moreira', lawyer: 'Dr. Pedro Alves', topic: 'Consumo', status: OrderStatus.COMPLETED, createdDate: '2024-11-25', amount: 2000 },
-        { id: '5', caseId: 'FC-123460', client: 'Carlos Alves', lawyer: 'Dra. Sofia Moreira', topic: 'Família', status: OrderStatus.RATING_PENDING, createdDate: '2024-12-03', amount: 2500 },
-    ];
-
-    const filteredCases = cases.filter(c => {
-        const matchesSearch = c.caseId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.client.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesFilter = filterStatus === 'all' || c.status === filterStatus;
-        return matchesSearch && matchesFilter;
+    const [cases, setCases] = useState<Case[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [pagination, setPagination] = useState({
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: 0
     });
+
+    useEffect(() => {
+        const fetchCases = async () => {
+            setIsLoading(true);
+            try {
+                const token = localStorage.getItem('fala_comigo_token');
+                if (!token) return;
+
+                const url = new URL('http://localhost:8000/api/v1/admin/cases');
+                url.searchParams.append('page', pagination.currentPage.toString());
+                if (searchTerm) url.searchParams.append('search', searchTerm);
+                if (filterStatus !== 'all') url.searchParams.append('status_filter', filterStatus);
+
+                const response = await fetch(url.toString(), {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        setCases(result.data);
+                        setPagination(prev => ({
+                            ...prev,
+                            totalPages: result.pagination.totalPages,
+                            totalItems: result.pagination.totalItems
+                        }));
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao buscar casos:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchCases();
+    }, [pagination.currentPage, searchTerm, filterStatus]);
+
+    const filteredCases = cases; // Filtros já virão do backend
 
     const getStatusBadge = (status: OrderStatus) => {
         const badges = {
@@ -45,6 +78,14 @@ export default function CaseManagement() {
         const badge = badges[status] || badges[OrderStatus.PENDING_PAYMENT];
         return <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge.color}`}>{badge.label}</span>;
     };
+
+    if (isLoading && cases.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <LoadingSpinner />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -68,7 +109,10 @@ export default function CaseManagement() {
                             type="text"
                             placeholder="Buscar por ID ou cliente..."
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setPagination(p => ({ ...p, currentPage: 1 }));
+                            }}
                             className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>
@@ -76,7 +120,10 @@ export default function CaseManagement() {
                         <FilterIcon className="w-5 h-5 text-gray-400" />
                         <select
                             value={filterStatus}
-                            onChange={(e) => setFilterStatus(e.target.value)}
+                            onChange={(e) => {
+                                setFilterStatus(e.target.value);
+                                setPagination(p => ({ ...p, currentPage: 1 }));
+                            }}
                             className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         >
                             <option value="all">Todos os Status</option>
@@ -90,7 +137,12 @@ export default function CaseManagement() {
             </div>
 
             {/* Cases Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+            <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                {isLoading && (
+                    <div className="absolute inset-0 bg-white/50 dark:bg-gray-800/50 flex items-center justify-center z-10">
+                        <LoadingSpinner />
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-gray-50 dark:bg-gray-700">
@@ -127,7 +179,7 @@ export default function CaseManagement() {
                                         {new Date(c.createdDate).toLocaleDateString('pt-PT')}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-gray-200">
-                                        {c.amount.toLocaleString()} MT
+                                        {(c.amount || 0).toLocaleString()} MT
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                         <button className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300">Ver</button>
@@ -139,18 +191,44 @@ export default function CaseManagement() {
                     </table>
                 </div>
 
-                {filteredCases.length === 0 && (
+                {filteredCases.length === 0 && !isLoading && (
                     <div className="text-center py-12">
                         <p className="text-gray-500 dark:text-gray-400">Nenhum caso encontrado</p>
                     </div>
                 )}
             </div>
 
+            {/* Pagination UI */}
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Mostrando {cases.length} de {pagination.totalItems} casos
+                </p>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setPagination(p => ({ ...p, currentPage: Math.max(1, p.currentPage - 1) }))}
+                        disabled={pagination.currentPage === 1 || isLoading}
+                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                    >
+                        Anterior
+                    </button>
+                    <span className="flex items-center px-4 font-medium text-gray-700 dark:text-gray-300">
+                        Página {pagination.currentPage} de {pagination.totalPages}
+                    </span>
+                    <button
+                        onClick={() => setPagination(p => ({ ...p, currentPage: Math.min(p.totalPages, p.currentPage + 1) }))}
+                        disabled={pagination.currentPage === pagination.totalPages || isLoading}
+                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                    >
+                        Próximo
+                    </button>
+                </div>
+            </div>
+
             {/* Summary */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
                     <p className="text-sm text-gray-600 dark:text-gray-400">Total de Casos</p>
-                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-200">{cases.length}</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-200">{pagination.totalItems}</p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
                     <p className="text-sm text-gray-600 dark:text-gray-400">Em Andamento</p>
@@ -167,7 +245,7 @@ export default function CaseManagement() {
                 <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
                     <p className="text-sm text-gray-600 dark:text-gray-400">Receita Total</p>
                     <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                        {cases.reduce((sum, c) => sum + c.amount, 0).toLocaleString()} MT
+                        {cases.reduce((sum, c) => sum + (c.amount || 0), 0).toLocaleString()} MT
                     </p>
                 </div>
             </div>

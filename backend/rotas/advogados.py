@@ -102,6 +102,54 @@ async def update_online_status(
     }
 
 
+@router.get("/{lawyer_id}/assignments")
+async def get_lawyer_assignments(
+    lawyer_id: str,
+    db: Session = Depends(get_db)
+):
+    """Obter consultas atribuídas ao advogado"""
+    # Buscar assignments do advogado
+    assignments = db.query(Assignment).filter(
+        Assignment.lawyer_id == lawyer_id
+    ).all()
+    
+    result = []
+    for assignment in assignments:
+        # Buscar ordem relacionada
+        order = db.query(Order).filter(Order.id == assignment.order_id).first()
+        if not order:
+            continue
+        
+        # Montar dados do assignment
+        assignment_data = {
+            "assignment_id": str(assignment.assignment_id),
+            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            "order": {
+                "id": str(order.id),
+                "human_id": order.human_id,
+                "order_id": order.order_id,
+                "user_id": str(order.user_id),
+                "client_phone_number": order.client_phone_number,
+                "topic": order.topic,
+                "pkg": order.pkg,
+                "consultation_type": order.consultation_type,
+                "payment_status": order.payment_status,
+                "payment_method": order.payment_method,
+                "status": order.status,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "client_name": order.user.full_name if order.user else "Cliente"
+            },
+            "session": assignment.session.to_dict() if assignment.session else None
+        }
+        
+        result.append(assignment_data)
+    
+    return {
+        "success": True,
+        "data": result
+    }
+
+
 @router.get("/{lawyer_id}/stats")
 async def get_lawyer_stats(
     lawyer_id: str,

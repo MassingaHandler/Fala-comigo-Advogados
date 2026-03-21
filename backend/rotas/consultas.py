@@ -14,9 +14,10 @@ from datetime import datetime
 
 from database import get_db
 from modelos.consultas import Order, Assignment, Session as ConsultationSession, OrderStatus
+from modelos.mensagens import ChatMessage, Document
 from modelos.usuarios import User
 from modelos.advogados import Lawyer
-from utils.dependencias import get_current_user, get_current_admin
+from utils.dependencias import get_current_user, get_current_admin, get_current_lawyer, get_current_active_entity
 from utils.helpers import generate_human_id
 
 router = APIRouter(prefix="/consultations", tags=["Consultas"])
@@ -34,6 +35,9 @@ class CreateConsultationRequest(BaseModel):
 class UpdateStatusRequest(BaseModel):
     status: str
 
+class UpdateNotesRequest(BaseModel):
+    notes: str
+    followUpRequested: Optional[bool] = None
 
 class AssignLawyerRequest(BaseModel):
     lawyer_id: str
@@ -110,9 +114,30 @@ async def create_consultation(
     )
     
     db.add(assignment)
+    db.flush()  # Para obter o ID da atribuição
+    
+    # Criar sessão de chat
+    session = ConsultationSession(
+        assignment_id=assignment.assignment_id
+    )
+    db.add(session)
+    db.flush()
+    
+    # Criar mensagem de boas-vindas
+    welcome_text = f"Olá! Sou {lawyer.nome}, seu advogado. Recebemos o seu pagamento via M-Pesa. Como posso ajudar?"
+    welcome_msg = ChatMessage(
+        order_id=new_order.id,
+        sender_id=lawyer.lawyer_id,
+        sender="lawyer",
+        text=welcome_text,
+        type="text"
+    )
+    db.add(welcome_msg)
+    
     db.commit()
     db.refresh(new_order)
     db.refresh(assignment)
+    db.refresh(session)
     
     return {
         "success": True,
@@ -170,7 +195,7 @@ async def list_user_consultations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Listar consultas do usuário"""
+    """Listar consultas do usuário com dados completos"""
     if str(current_user.id) != user_id and not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -185,9 +210,59 @@ async def list_user_consultations(
     total = query.count()
     orders = query.order_by(Order.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
     
+    # Enriquecer dados com assignment
+    result = []
+    for order in orders:
+        order_dict = order.to_dict()
+        
+        # Buscar assignment
+        assignment = db.query(Assignment).filter(Assignment.order_id == str(order.id)).first()
+        if assignment:
+            # Buscar advogado
+            lawyer = db.query(Lawyer).filter(Lawyer.lawyer_id == assignment.lawyer_id).first()
+            
+            order_dict["assignment"] = {
+                "assignment_id": str(assignment.assignment_id),
+                "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+                "lawyer": lawyer.to_dict() if lawyer else None
+            }
+            
+            # Buscar sessão
+            session = db.query(ConsultationSession).filter(ConsultationSession.assignment_id == assignment.assignment_id).first()
+            if not session:
+                # Criar sessão preguiçosamente
+                session = ConsultationSession(assignment_id=assignment.assignment_id)
+                db.add(session)
+                db.flush()
+                
+                # Mensagem inicial
+                welcome_msg = ChatMessage(
+                    order_id=order.id,
+                    sender_id=lawyer.lawyer_id,
+                    sender="lawyer",
+                    text=f"Olá! Sou {lawyer.nome}, seu advogado. Como posso ajudar?",
+                    type="text"
+                )
+                db.add(welcome_msg)
+                db.commit()
+                db.refresh(session)
+
+            # Buscar mensagens e documentos
+            messages = db.query(ChatMessage).filter(ChatMessage.order_id == order.id).order_by(ChatMessage.timestamp.asc()).all()
+            docs = db.query(Document).filter(Document.order_id == order.id).all()
+            
+            order_dict["assignment"]["session"] = {
+                "session_id": str(session.session_id),
+                "startTime": session.start_time.isoformat() if session.start_time else None,
+                "messages": [m.to_dict() for m in messages],
+                "documents": [d.to_dict() for d in docs]
+            }
+        
+        result.append(order_dict)
+    
     return {
         "success": True,
-        "data": [order.to_dict() for order in orders],
+        "data": result,
         "pagination": {
             "currentPage": page,
             "totalPages": (total + limit - 1) // limit,
@@ -201,7 +276,7 @@ async def list_user_consultations(
 async def update_consultation_status(
     order_id: str,
     request: UpdateStatusRequest,
-    current_user: User = Depends(get_current_user),
+    current_entity = Depends(get_current_active_entity),
     db: Session = Depends(get_db)
 ):
     """Atualizar status da consulta"""
@@ -212,6 +287,31 @@ async def update_consultation_status(
             detail="Consulta não encontrada"
         )
     
+    # Verificar permissão (apenas advogado atribuído ou admin ou o próprio usuário se for pra cancelar - simplificado aqui)
+    # Se for admin, permite tudo
+    is_admin = getattr(current_entity, 'is_admin', False)
+    
+    if not is_admin:
+        # Se for advogado, verificar se está atribuído
+        if hasattr(current_entity, 'lawyer_id'):
+            assignment = db.query(Assignment).filter(
+                Assignment.order_id == order_id,
+                Assignment.lawyer_id == current_entity.lawyer_id
+            ).first()
+            
+            if not assignment:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Você não tem permissão para alterar o status desta consulta"
+                )
+        # Se for usuário comum, verificar se é o dono da consulta
+        elif hasattr(current_entity, 'id'):
+            if str(order.user_id) != str(current_entity.id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Você não tem permissão para alterar o status desta consulta"
+                )
+    
     order.status = request.status
     order.updated_at = datetime.utcnow()
     db.commit()
@@ -221,6 +321,48 @@ async def update_consultation_status(
         "message": "Status atualizado",
         "orderId": order_id,
         "newStatus": request.status
+    }
+
+
+@router.patch("/{order_id}/notes")
+async def update_consultation_notes(
+    order_id: str,
+    request: UpdateNotesRequest,
+    current_lawyer: Lawyer = Depends(get_current_lawyer),
+    db: Session = Depends(get_db)
+):
+    """Atualizar notas do advogado e flag de acompanhamento"""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Consulta não encontrada"
+        )
+    
+    # Verificar se o advogado está atribuído a este caso
+    assignment = db.query(Assignment).filter(
+        Assignment.order_id == order_id,
+        Assignment.lawyer_id == current_lawyer.lawyer_id
+    ).first()
+    
+    if not assignment and not current_lawyer.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não tem permissão para editar notas deste caso"
+        )
+    
+    order.lawyer_notes = request.notes
+    if request.followUpRequested is not None:
+        order.follow_up_requested = request.followUpRequested
+        
+    order.updated_at = datetime.utcnow()
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Notas atualizadas com sucesso",
+        "notes": order.lawyer_notes,
+        "followUpRequested": order.follow_up_requested
     }
 
 
@@ -252,8 +394,26 @@ async def assign_lawyer(
         order_id=order_id,
         lawyer_id=request.lawyer_id
     )
-    
     db.add(assignment)
+    db.flush()
+    
+    # Criar sessão de chat
+    session = ConsultationSession(
+        assignment_id=assignment.assignment_id
+    )
+    db.add(session)
+    db.flush()
+    
+    # Criar mensagem de boas-vindas
+    welcome_text = f"Olá! Sou {lawyer.nome}, seu advogado. Recebemos o seu pagamento via M-Pesa. Como posso ajudar?"
+    welcome_msg = ChatMessage(
+        order_id=order.id,
+        sender_id=lawyer.lawyer_id,
+        sender="lawyer",
+        text=welcome_text,
+        type="text"
+    )
+    db.add(welcome_msg)
     
     # Atualizar status do order
     order.status = OrderStatus.ASSIGNED.value
@@ -265,4 +425,74 @@ async def assign_lawyer(
         "success": True,
         "message": "Advogado atribuído com sucesso",
         "assignment": assignment.to_dict()
+    }
+
+
+@router.get("/track/{human_id}")
+async def track_consultation(
+    human_id: str,
+    db: Session = Depends(get_db)
+):
+    """Rastrear consulta por ID legível (público)"""
+    order = db.query(Order).filter(Order.human_id == human_id).first()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Consulta não encontrada. Verifique o ID."
+        )
+    
+    result = order.to_dict()
+    
+    # Adicionar assignment se existir
+    assignment = db.query(Assignment).filter(Assignment.order_id == str(order.id)).first()
+    if assignment:
+        lawyer = db.query(Lawyer).filter(Lawyer.lawyer_id == assignment.lawyer_id).first()
+        
+        result["assignment"] = {
+            "assignment_id": str(assignment.assignment_id),
+            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            "lawyer": {
+                "lawyer_id": str(lawyer.lawyer_id),
+                "nome": lawyer.nome,
+                "especialidade": lawyer.especialidade,
+                "rating": lawyer.rating,
+                "avatarUrl": lawyer.to_dict().get("avatarUrl")
+            } if lawyer else None
+        }
+        
+        # Buscar sessão
+        session = db.query(ConsultationSession).filter(ConsultationSession.assignment_id == assignment.assignment_id).first()
+        if not session:
+            # Criar sessão preguiçosamente (para dados antigos)
+            session = ConsultationSession(assignment_id=assignment.assignment_id)
+            db.add(session)
+            db.flush()
+            
+            # Criar mensagem de boas-vindas
+            welcome_text = f"Olá! Sou {lawyer.nome}, seu advogado. Como posso ajudar?"
+            welcome_msg = ChatMessage(
+                order_id=order.id,
+                sender_id=lawyer.lawyer_id,
+                sender="lawyer",
+                text=welcome_text,
+                type="text"
+            )
+            db.add(welcome_msg)
+            db.commit()
+            db.refresh(session)
+
+        # Buscar mensagens e documentos
+        messages = db.query(ChatMessage).filter(ChatMessage.order_id == order.id).order_by(ChatMessage.timestamp.asc()).all()
+        docs = db.query(Document).filter(Document.order_id == order.id).all()
+        
+        result["assignment"]["session"] = {
+            "session_id": str(session.session_id),
+            "startTime": session.start_time.isoformat() if session.start_time else None,
+            "messages": [m.to_dict() for m in messages],
+            "documents": [d.to_dict() for d in docs]
+        }
+    
+    return {
+        "success": True,
+        "data": result
     }

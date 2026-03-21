@@ -8,6 +8,7 @@ interface AuthContextType {
     login: (email: string, password: string) => Promise<boolean>;
     logout: () => void;
     register: (userData: any) => Promise<boolean>;
+    updateUser: (newData: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,72 +45,59 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }, []);
 
     const login = async (email: string, password: string): Promise<boolean> => {
-        // MOCK LOGIN - In production, this would call Supabase Auth
-        // For demo purposes, accept any email/password combination
+        try {
+            // Chamar API de login do backend
+            const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
 
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 500));
+            const result = await response.json();
 
-        // Check for admin credentials
-        if (email === 'admin@falacomigo.mz' && password === 'admin123') {
-            const adminUser: User = {
-                id: 'admin-001',
-                fullName: 'Administrador Sistema',
-                birthDate: new Date('1990-01-01'),
-                nationality: 'Moçambicana',
-                documentType: 'bi' as any,
-                documentNumber: 'ADMIN001',
-                phoneNumber: '+258 84 000 0000',
-                phoneVerified: true,
-                email: 'admin@falacomigo.mz',
-                emailVerified: true,
-                passwordHash: 'hashed_password',
-                twoFactorEnabled: false,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-            };
+            if (!response.ok) {
+                console.error('Erro no login:', result);
+                return false;
+            }
 
-            // Add admin flag (extend User type if needed)
-            (adminUser as any).isAdmin = true;
+            if (result.success && result.user) {
+                // Salvar token
+                localStorage.setItem('fala_comigo_token', result.token);
 
-            setUser(adminUser);
-            setIsAuthenticated(true);
-            localStorage.setItem('fala_comigo_user', JSON.stringify(adminUser));
-            return true;
+                // Salvar dados do usuário
+                const userData = {
+                    id: result.user.id || result.user.userId || result.user.lawyer_id,
+                    fullName: result.user.fullName || result.user.full_name || result.user.nome,
+                    email: result.user.email || result.user.professionalEmail,
+                    phoneNumber: result.user.phoneNumber || result.user.phone_number || result.user.professionalPhone,
+                    isAdmin: result.user.isAdmin || result.user.is_admin || false,
+                    role: result.user.role || 'user',
+                    ...result.user
+                };
+
+                localStorage.setItem('fala_comigo_user', JSON.stringify(userData));
+
+                setUser(userData as User);
+                setIsAuthenticated(true);
+
+                console.log('Login bem-sucedido:', userData);
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            console.error('Erro ao fazer login:', error);
+            return false;
         }
-
-        // Regular user login (demo)
-        if (email && password) {
-            const mockUser: User = {
-                id: 'user-' + Date.now(),
-                fullName: 'Usuário Demo',
-                birthDate: new Date('1995-05-15'),
-                nationality: 'Moçambicana',
-                documentType: 'bi' as any,
-                documentNumber: '123456789012A',
-                phoneNumber: '+258 84 123 4567',
-                phoneVerified: true,
-                email: email,
-                emailVerified: true,
-                passwordHash: 'hashed_password',
-                twoFactorEnabled: false,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-            };
-
-            setUser(mockUser);
-            setIsAuthenticated(true);
-            localStorage.setItem('fala_comigo_user', JSON.stringify(mockUser));
-            return true;
-        }
-
-        return false;
     };
 
     const logout = () => {
         setUser(null);
         setIsAuthenticated(false);
         localStorage.removeItem('fala_comigo_user');
+        localStorage.removeItem('fala_comigo_token');
     };
 
     const register = async (userData: any): Promise<boolean> => {
@@ -140,6 +128,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return true;
     };
 
+    const updateUser = (newData: Partial<User>) => {
+        if (!user) return;
+        const updatedUser = { ...user, ...newData };
+        setUser(updatedUser);
+        localStorage.setItem('fala_comigo_user', JSON.stringify(updatedUser));
+    };
+
     const isAdmin = (user as any)?.isAdmin || false;
 
     const value: AuthContextType = {
@@ -149,6 +144,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         login,
         logout,
         register,
+        updateUser,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

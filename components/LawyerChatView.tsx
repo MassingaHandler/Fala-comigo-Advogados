@@ -12,7 +12,7 @@ interface Props {
 
 export default function LawyerChatView({ order, onUpdateOrder, onBack, onCompleteCase }: Props) {
     const [newMessage, setNewMessage] = useState('');
-    const [privateNote, setPrivateNote] = useState('');
+    const [privateNote, setPrivateNote] = useState(order.lawyerNotes || '');
     const [showNotes, setShowNotes] = useState(false);
     const [sessionDuration, setSessionDuration] = useState(0);
     const chatEndRef = useRef<HTMLDivElement>(null);
@@ -101,6 +101,32 @@ export default function LawyerChatView({ order, onUpdateOrder, onBack, onComplet
         onUpdateOrder(updatedOrder);
     };
 
+    const handleSaveNotes = async () => {
+        try {
+            const token = localStorage.getItem('fala_comigo_token');
+            const response = await fetch(`http://localhost:8000/api/v1/consultations/${order.id}/notes`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ notes: privateNote })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                onUpdateOrder({
+                    ...order,
+                    lawyerNotes: result.notes
+                });
+                alert('Notas salvas com sucesso!');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar notas:', error);
+            alert('Falha ao salvar notas.');
+        }
+    };
+
     const formatDuration = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -125,6 +151,11 @@ export default function LawyerChatView({ order, onUpdateOrder, onBack, onComplet
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                             {order.human_id} • {order.topic.name}
+                            {order.followUpRequested && (
+                                <span className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 rounded-full text-[10px] font-bold">
+                                    📌 Acompanhamento
+                                </span>
+                            )}
                         </p>
                     </div>
                 </div>
@@ -141,8 +172,8 @@ export default function LawyerChatView({ order, onUpdateOrder, onBack, onComplet
                     <button
                         onClick={() => setShowNotes(!showNotes)}
                         className={`px-3 py-2 rounded-lg transition-all text-sm font-medium ${showNotes
-                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                                : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                            ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                            : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                             }`}
                     >
                         📝 Notas
@@ -170,8 +201,8 @@ export default function LawyerChatView({ order, onUpdateOrder, onBack, onComplet
                                     </div>
                                 )}
                                 <div className={`max-w-xs md:max-w-md p-3 rounded-lg shadow-sm ${msg.sender === 'lawyer'
-                                        ? 'bg-indigo-600 text-white rounded-br-none'
-                                        : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-100 dark:border-gray-600'
+                                    ? 'bg-indigo-600 text-white rounded-br-none'
+                                    : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-100 dark:border-gray-600'
                                     }`}>
                                     {msg.type === 'document' ? (
                                         <div className="flex items-center gap-2">
@@ -210,7 +241,10 @@ export default function LawyerChatView({ order, onUpdateOrder, onBack, onComplet
                             placeholder="Adicionar notas sobre o caso..."
                             className="w-full h-64 p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
                         />
-                        <button className="mt-2 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
+                        <button
+                            onClick={handleSaveNotes}
+                            className="mt-2 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                        >
                             Salvar Notas
                         </button>
                     </div>

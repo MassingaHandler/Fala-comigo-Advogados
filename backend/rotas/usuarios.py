@@ -23,6 +23,14 @@ class UpdateUserRequest(BaseModel):
     phoneNumber: Optional[str] = None
     neighborhood: Optional[str] = None
     city: Optional[str] = None
+    street: Optional[str] = None
+    occupation: Optional[str] = None
+    nuit: Optional[str] = None
+    documentIssueDate: Optional[str] = None
+    documentExpiryDate: Optional[str] = None
+    documentFrontUrl: Optional[str] = None
+    documentBackUrl: Optional[str] = None
+    selfieUrl: Optional[str] = None
 
 
 class UpdateStatusRequest(BaseModel):
@@ -74,18 +82,50 @@ async def update_user_profile(
             detail="Usuário não encontrado"
         )
     
-    # Atualizar campos
+    # Atualizar campos básicos
     if request.fullName:
         user.full_name = request.fullName
     if request.phoneNumber:
         user.phone_number = request.phoneNumber
+    if request.occupation:
+        user.occupation = request.occupation
+    if request.nuit:
+        user.nuit = request.nuit
+        
+    # Atualizar datas de documentos
+    if request.documentIssueDate:
+        try:
+            user.document_issue_date = datetime.fromisoformat(request.documentIssueDate.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    if request.documentExpiryDate:
+        try:
+            user.document_expiry_date = datetime.fromisoformat(request.documentExpiryDate.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+
+    # Atualizar URLs de documentos
+    if request.documentFrontUrl:
+        user.document_front_url = request.documentFrontUrl
+    if request.documentBackUrl:
+        user.document_back_url = request.documentBackUrl
+    if request.selfieUrl:
+        user.selfie_url = request.selfieUrl
+        
+    # Lógica de KYC: Se enviou campos críticos, marca como pendente
+    if any([request.nuit, request.documentIssueDate, request.documentFrontUrl]):
+        from modelos.usuarios import KYCStatus
+        user.kyc_status = KYCStatus.PENDING
     
-    if request.neighborhood or request.city:
+    # Atualizar endereço
+    if any([request.neighborhood, request.city, request.street]):
         address = user.address or {}
         if request.neighborhood:
             address["neighborhood"] = request.neighborhood
         if request.city:
             address["city"] = request.city
+        if request.street:
+            address["street"] = request.street
         user.address = address
     
     user.updated_at = datetime.utcnow()

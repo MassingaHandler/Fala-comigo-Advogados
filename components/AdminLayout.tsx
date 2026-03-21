@@ -27,10 +27,12 @@ export default function AdminLayout() {
         { id: '/admin/dashboard', label: 'Dashboard', icon: HomeIcon },
         { id: '/admin/users', label: 'Usuários', icon: Users },
         { id: '/admin/lawyers', label: 'Advogados', icon: UserIcon },
+        { id: '/admin/lawyer-applications', label: 'Candidaturas', icon: Shield },
         { id: '/admin/cases', label: 'Casos', icon: BriefcaseIcon },
         { id: '/admin/payments', label: 'Pagamentos', icon: DollarSignIcon },
         { id: '/admin/analytics', label: 'Analytics', icon: BarChartIcon },
         { id: '/admin/settings', label: 'Configurações', icon: Settings },
+
     ];
 
     return (
