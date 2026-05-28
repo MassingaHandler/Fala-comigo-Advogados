@@ -419,21 +419,27 @@ async def list_lawyers(
     limit: int = 20,
     search: Optional[str] = None,
     specialty_filter: Optional[str] = None,
+    verification_filter: Optional[str] = "verified",
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """Listar advogados (Admin)"""
     query = db.query(Lawyer)
-    
+
     if search:
-        query = query.filter(Lawyer.nome.ilike(f"%{search}%"))
-    
+        query = query.filter(
+            (Lawyer.nome.ilike(f"%{search}%")) | (Lawyer.professional_email.ilike(f"%{search}%"))
+        )
+
     if specialty_filter and specialty_filter != "all":
         query = query.filter(Lawyer.especialidade == specialty_filter)
-        
+
+    if verification_filter and verification_filter != "all":
+        query = query.filter(Lawyer.verification_status == verification_filter)
+
     total = query.count()
     lawyers = query.order_by(Lawyer.nome).offset((page - 1) * limit).limit(limit).all()
-    
+
     lawyers_data = []
     for l in lawyers:
         lawyers_data.append({
@@ -443,9 +449,12 @@ async def list_lawyers(
             "rating": l.rating,
             "casesCompleted": l.cases_completed,
             "status": "active" if l.is_active else "inactive",
-            "phone": l.professional_phone
+            "phone": l.professional_phone,
+            "email": l.professional_email,
+            "verificationStatus": l.verification_status,
+            "joinedDate": l.created_at.isoformat() if l.created_at else None,
         })
-        
+
     return {
         "success": True,
         "data": lawyers_data,
@@ -470,6 +479,106 @@ class LawyerUpdateRequest(BaseModel):
 class LawyerVerifyRequest(BaseModel):
     action: str  # "approve" | "reject"
     notes: Optional[str] = None
+
+
+class LawyerCreateRequest(BaseModel):
+    nome: str
+    especialidade: str
+    birth_date: str
+    nationality: str
+    document_type: str
+    document_number: str
+    document_issue_date: str
+    document_expiry_date: str
+    oam_number: str
+    oam_registration_year: int
+    specializations: list
+    professional_email: str
+    professional_phone: str
+    office_address: str
+    city: str
+    province: str
+    password: str = "temp_password_123"
+    is_active: bool = True
+
+
+@router.post("/lawyers")
+async def create_lawyer_manual(
+    request: LawyerCreateRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Criar novo advogado manualmente (Admin)"""
+    import uuid
+    from utils.helpers import format_mozambique_phone
+    
+    # Verificar se email já existe
+    existing_lawyer = db.query(Lawyer).filter(Lawyer.professional_email == request.professional_email).first()
+    if existing_lawyer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email profissional já cadastrado"
+        )
+    
+    # Verificar OAM
+    existing_oam = db.query(Lawyer).filter(Lawyer.oam_number == request.oam_number).first()
+    if existing_oam:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Número OAM já cadastrado"
+        )
+    
+    try:
+        # Criar advogado verificado
+        new_lawyer = Lawyer(
+            lawyer_id=uuid.uuid4(),
+            nome=request.nome,
+            birth_date=datetime.fromisoformat(request.birth_date),
+            nationality=request.nationality,
+            document_type=request.document_type,
+            document_number=request.document_number,
+            document_issue_date=datetime.fromisoformat(request.document_issue_date),
+            document_expiry_date=datetime.fromisoformat(request.document_expiry_date),
+            oam_number=request.oam_number,
+            oam_registration_year=request.oam_registration_year,
+            especialidade=request.specializations[0] if request.specializations else "Geral",
+            specializations=request.specializations,
+            professional_email=request.professional_email,
+            professional_phone=format_mozambique_phone(request.professional_phone),
+            phone_number=format_mozambique_phone(request.professional_phone),
+            office_address=request.office_address,
+            city=request.city,
+            province=request.province,
+            password_hash=get_password_hash(request.password),
+            terms_accepted=True,
+            legal_declaration=True,
+            verification_authorization=True,
+            verification_status="verified",  # Criado já verificado
+            is_active=request.is_active
+        )
+        
+        db.add(new_lawyer)
+        db.commit()
+        db.refresh(new_lawyer)
+        
+        return {
+            "success": True,
+            "message": "Advogado criado com sucesso",
+            "lawyer_id": str(new_lawyer.lawyer_id),
+            "data": {
+                "id": str(new_lawyer.lawyer_id),
+                "nome": new_lawyer.nome,
+                "especialidade": new_lawyer.especialidade,
+                "email": new_lawyer.professional_email,
+                "phone": new_lawyer.professional_phone,
+                "status": "active" if new_lawyer.is_active else "inactive"
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Erro ao processar dados: {str(e)}"
+        )
 
 
 @router.get("/lawyers/applications")

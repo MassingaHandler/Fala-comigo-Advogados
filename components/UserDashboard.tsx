@@ -70,8 +70,8 @@ export default function UserDashboard({ onNewConsultation, onHistory, orderHisto
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Welcome Banner */}
-            <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-8 text-white shadow-xl">
-                <h1 className="text-3xl font-bold mb-2">Bem-vindo de volta! 👋</h1>
+            <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-5 md:p-8 text-white shadow-xl">
+                <h1 className="text-2xl md:text-3xl font-bold mb-2">Bem-vindo de volta! 👋</h1>
                 <p className="text-red-100">Gerencie suas consultas jurídicas de forma simples e eficiente</p>
             </div>
 

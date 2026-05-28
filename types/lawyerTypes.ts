@@ -29,6 +29,10 @@ export interface LawyerRegistrationData {
     city: string;
     province: string;
 
+    // Acesso
+    password: string;
+    passwordConfirm: string;
+
     // Compliance
     termsAccepted: boolean;
     legalDeclaration: boolean;

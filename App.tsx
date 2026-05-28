@@ -36,6 +36,8 @@ import LandingPage from './components/LandingPage';
 import QuickRegistration from './components/QuickRegistration';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 interface PendingOrderData {
     topic: ServiceTopic;
     pkg: ConsultationPackage;
@@ -67,7 +69,7 @@ function AppContent() {
                     const user = JSON.parse(userStr);
 
                     // Buscar consultas do backend
-                    const response = await fetch(`http://localhost:8000/api/v1/consultations/users/${user.id}/consultations`, {
+                    const response = await fetch(`${API_BASE_URL}/api/v1/consultations/users/${user.id}/consultations`, {
                         headers: {
                             'Authorization': `Bearer ${token}`
                         }
@@ -313,9 +315,51 @@ function AppContent() {
                 <Route path="/registro-advogado" element={
                     isAuthenticated ? <Navigate to="/dashboard" replace /> :
                         <LawyerRegistrationWizard
-                            onComplete={(data) => {
-                                console.log('Lawyer registration data:', data);
-                                navigate('/registro-advogado/sucesso');
+                            onComplete={async (data) => {
+                                try {
+                                    const formData = new FormData();
+                                    formData.append('fullName', data.fullName);
+                                    formData.append('birthDate', data.birthDate!.toISOString().split('T')[0]);
+                                    formData.append('nationality', data.nationality);
+                                    formData.append('documentType', data.documentType);
+                                    formData.append('documentNumber', data.documentNumber);
+                                    formData.append('documentIssueDate', data.documentIssueDate!.toISOString().split('T')[0]);
+                                    formData.append('documentExpiryDate', data.documentExpiryDate!.toISOString().split('T')[0]);
+                                    formData.append('oamNumber', data.oamNumber);
+                                    formData.append('oamRegistrationYear', String(data.oamRegistrationYear));
+                                    formData.append('specializations', JSON.stringify(data.specializations));
+                                    formData.append('professionalEmail', data.professionalEmail);
+                                    formData.append('professionalPhone', data.professionalPhone);
+                                    formData.append('officeAddress', data.officeAddress);
+                                    formData.append('city', data.city);
+                                    formData.append('province', data.province);
+                                    formData.append('password', data.password);
+                                    formData.append('termsAccepted', String(data.termsAccepted));
+                                    formData.append('legalDeclaration', String(data.legalDeclaration));
+                                    formData.append('verificationAuthorization', String(data.verificationAuthorization));
+                                    formData.append('documentFile', data.documentFile!);
+                                    formData.append('oamCardFile', data.oamCardFile!);
+                                    formData.append('cvFile', data.cvFile!);
+                                    if (data.additionalDocs && data.additionalDocs.length > 0) {
+                                        data.additionalDocs.forEach(doc => formData.append('additionalDocs', doc));
+                                    }
+
+                                    const response = await fetch('http://localhost:8000/api/v1/auth/register/lawyer', {
+                                        method: 'POST',
+                                        body: formData,
+                                    });
+
+                                    const result = await response.json();
+
+                                    if (response.ok && result.success) {
+                                        navigate('/registro-advogado/sucesso');
+                                    } else {
+                                        alert(result.detail || 'Erro ao submeter o registo. Tente novamente.');
+                                    }
+                                } catch (err) {
+                                    console.error('Erro no registo de advogado:', err);
+                                    alert('Erro de conexão. Verifique se o servidor está a funcionar.');
+                                }
                             }}
                             onBack={() => navigate('/login')}
                         />
@@ -323,7 +367,7 @@ function AppContent() {
 
                 <Route path="/registro-advogado/sucesso" element={<LawyerRegistrationSuccess />} />
 
-                <Route path="/portal-advogado" element={<LawyerPortal onBack={() => navigate('/login')} />} />
+                <Route path="/portal-advogado" element={<LawyerPortal />} />
 
                 {/* User Dashboard Routes with Layout */}
                 <Route element={

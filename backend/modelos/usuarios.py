@@ -9,6 +9,19 @@ from datetime import datetime
 import enum
 
 
+class PasswordResetToken(Base):
+    """Token temporário para recuperação de senha"""
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(String(20), nullable=False, default='user')  # 'user' | 'lawyer'
+    token = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class DocumentType(str, enum.Enum):
     """Tipos de documento"""
     BI = "bi"

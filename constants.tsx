@@ -15,9 +15,11 @@ export const TOPICS: ServiceTopic[] = [
   { id: "familia", name: "Direito de Família", icon: <UsersIcon className="w-8 h-8" /> },
   { id: "trabalho", name: "Direito Laboral", icon: <GavelIcon className="w-8 h-8" /> },
   { id: "consumo", name: "Direito do Consumidor", icon: <ShoppingCartIcon className="w-8 h-8" /> },
-  { id: "terra", name: "Direito Imobiliário", icon: <HomeIcon className="w-8 h-8" /> },
-  { id: "criminal", name: "Direito Criminal", icon: <CarIcon className="w-8 h-8" /> },
-  { id: "heranca", name: "Direito Sucessório", icon: <GiftIcon className="w-8 h-8" /> },
+  { id: "terra", name: "Direito Imobiliário/DUAT", icon: <HomeIcon className="w-8 h-8" /> },
+  { id: "penal", name: "Direito Penal", icon: <CarIcon className="w-8 h-8" /> },
+  { id: "civil", name: "Direito Civil", icon: <GiftIcon className="w-8 h-8" /> },
+  { id: "empresarial", name: "Direito Empresarial", icon: <GavelIcon className="w-8 h-8" /> },
+  { id: "administrativo", name: "Direito Administrativo", icon: <QuestionMarkCircleIcon className="w-8 h-8" /> },
   { id: "outros", name: "Outros", icon: <QuestionMarkCircleIcon className="w-8 h-8" /> },
 ];
 

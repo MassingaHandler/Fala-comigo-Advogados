@@ -23,11 +23,6 @@
   - Avaliação: 4.8 ⭐ (127 avaliações)
   - Status: Online
 
-### Qualquer Usuário (Demo)
-- **Email:** Qualquer email válido
-- **Senha:** Qualquer senha
-- **Descrição:** O sistema aceita qualquer combinação de email/senha para demonstração
-
 ## 📊 Dados de Teste
 
 Ao fazer login com o usuário de teste, você terá acesso a:

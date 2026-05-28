@@ -44,10 +44,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     }, []);
 
+    const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
     const login = async (email: string, password: string): Promise<boolean> => {
         try {
             // Chamar API de login do backend
-            const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+            const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

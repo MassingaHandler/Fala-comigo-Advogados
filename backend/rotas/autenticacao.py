@@ -14,7 +14,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 
 from database import get_db
-from modelos.usuarios import User, DocumentType, Gender
+from modelos.usuarios import User, DocumentType, Gender, PasswordResetToken
 from modelos.advogados import Lawyer
 from servicos.autenticacao import get_password_hash, verify_password, create_access_token, verify_token
 from servicos.upload import save_upload_file
@@ -302,6 +302,132 @@ async def register_lawyer(
         "message": "Registro submetido. Aguardando verificação da OAM.",
         "lawyerId": str(new_lawyer.lawyer_id),
         "status": "pending_verification"
+    }
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    role: str = "user"  # "user" | "lawyer"
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    token: str
+    new_password: str
+    role: str = "user"
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Solicitar recuperação de senha.
+    Em produção enviaria email; em desenvolvimento devolve o token directamente.
+    """
+    import secrets
+
+    # Verificar se o email existe no sistema
+    if request.role == "lawyer":
+        account = db.query(Lawyer).filter(Lawyer.professional_email == request.email).first()
+    else:
+        account = db.query(User).filter(User.email == request.email).first()
+
+    if not account:
+        # Resposta genérica por segurança — não revelar se email existe
+        return {
+            "success": True,
+            "message": "Se o email estiver registado, receberá instruções de recuperação.",
+            "debug_token": None
+        }
+
+    # Invalidar tokens anteriores deste email/role
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.email == request.email,
+        PasswordResetToken.role == request.role,
+        PasswordResetToken.used == False
+    ).update({"used": True})
+
+    # Criar novo token (6 dígitos para facilidade no dev)
+    token = str(secrets.randbelow(900000) + 100000)
+    expires_at = datetime.utcnow() + timedelta(minutes=30)
+
+    reset_token = PasswordResetToken(
+        email=request.email,
+        role=request.role,
+        token=token,
+        expires_at=expires_at
+    )
+    db.add(reset_token)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Código de recuperação gerado.",
+        # Em dev devolvemos o token; em produção seria enviado por email
+        "debug_token": token,
+        "expires_in_minutes": 30
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Redefinir senha usando o token de recuperação"""
+    if len(request.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A nova senha deve ter pelo menos 6 caracteres"
+        )
+
+    # Validar token
+    reset_token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.email == request.email,
+        PasswordResetToken.token == request.token,
+        PasswordResetToken.role == request.role,
+        PasswordResetToken.used == False
+    ).first()
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Código inválido ou já utilizado"
+        )
+
+    if reset_token.expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Código expirado. Solicite um novo."
+        )
+
+    # Actualizar a senha
+    new_hash = get_password_hash(request.new_password)
+
+    if request.role == "lawyer":
+        account = db.query(Lawyer).filter(Lawyer.professional_email == request.email).first()
+        if account:
+            account.password_hash = new_hash
+    else:
+        account = db.query(User).filter(User.email == request.email).first()
+        if account:
+            account.password_hash = new_hash
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conta não encontrada"
+        )
+
+    # Marcar token como usado
+    reset_token.used = True
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Senha redefinida com sucesso. Pode fazer login agora."
     }
 
 

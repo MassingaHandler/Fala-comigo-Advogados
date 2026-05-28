@@ -50,98 +50,107 @@ async def create_consultation(
     db: Session = Depends(get_db)
 ):
     """Criar nova consulta com advogado e pagamento automático"""
-    # Gerar ID legível
+    import uuid as _uuid
+    from sqlalchemy import func as sqlfunc
+
     human_id = generate_human_id("FC")
-    
-    # Determinar advogado
-    lawyer_id = request.selectedLawyerId
-    
-    if not lawyer_id or lawyer_id == "auto":
-        # Auto-atribuir: buscar advogado disponível da especialidade
-        specialty = request.topic.get("name", "")
-        available_lawyer = db.query(Lawyer).filter(
-            Lawyer.especialidade == specialty,
-            Lawyer.is_active == True,
-            Lawyer.verification_status == "verified",
-            Lawyer.is_online == True
-        ).first()
-        
-        if not available_lawyer:
-            # Se não houver online, pegar qualquer um verificado
-            available_lawyer = db.query(Lawyer).filter(
-                Lawyer.especialidade == specialty,
+
+    # ── Determinar advogado ──────────────────────────────────────────────────
+    selected_id = request.selectedLawyerId
+    lawyer: Lawyer | None = None
+
+    if selected_id and selected_id != "auto":
+        try:
+            lawyer_uuid = _uuid.UUID(selected_id)
+            lawyer = db.query(Lawyer).filter(
+                Lawyer.lawyer_id == lawyer_uuid,
                 Lawyer.is_active == True,
                 Lawyer.verification_status == "verified"
             ).first()
-        
-        if not available_lawyer:
+        except (ValueError, AttributeError):
+            pass
+
+    if not lawyer:
+        # Auto-atribuir: pesquisa flexível por especialidade
+        specialty = request.topic.get("name", "")
+        base_filter = [
+            Lawyer.is_active == True,
+            Lawyer.verification_status == "verified"
+        ]
+
+        # 1. Online + especialidade
+        lawyer = db.query(Lawyer).filter(
+            *base_filter,
+            Lawyer.is_online == True,
+            sqlfunc.array_to_string(Lawyer.specializations, ',').ilike(f"%{specialty}%")
+        ).first()
+
+        # 2. Qualquer + especialidade
+        if not lawyer:
+            lawyer = db.query(Lawyer).filter(
+                *base_filter,
+                sqlfunc.array_to_string(Lawyer.specializations, ',').ilike(f"%{specialty}%")
+            ).first()
+
+        # 3. Qualquer advogado verificado (fallback)
+        if not lawyer:
+            lawyer = db.query(Lawyer).filter(*base_filter).order_by(
+                Lawyer.is_online.desc(), Lawyer.rating.desc()
+            ).first()
+
+        if not lawyer:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Nenhum advogado disponível para {specialty}"
+                detail="Nenhum advogado disponível no sistema. Tente mais tarde."
             )
-        
-        lawyer_id = str(available_lawyer.lawyer_id)
-    
-    # Verificar se advogado existe
-    lawyer = db.query(Lawyer).filter(Lawyer.lawyer_id == lawyer_id).first()
-    if not lawyer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Advogado não encontrado"
-        )
-    
-    # Criar order
+
+    # ── Criar Order ──────────────────────────────────────────────────────────
     new_order = Order(
         human_id=human_id,
         order_id=human_id,
-        user_id=request.user_id,
+        user_id=_uuid.UUID(str(request.user_id)),
         client_phone_number=request.clientPhoneNumber,
         topic=request.topic,
         pkg=request.pkg,
         consultation_type=request.consultationType,
-        status=OrderStatus.ASSIGNED.value,  # Já atribuído
-        payment_status="confirmed",  # Pagamento automático (temporário)
+        status=OrderStatus.ASSIGNED.value,
+        payment_status="confirmed",
         payment_method="auto"
     )
-    
     db.add(new_order)
-    db.flush()  # Para obter o ID
-    
-    # Criar assignment
+    db.flush()
+
+    # ── Criar Assignment ─────────────────────────────────────────────────────
     assignment = Assignment(
-        order_id=str(new_order.id),
-        lawyer_id=lawyer_id
+        order_id=new_order.id,         # UUID object
+        lawyer_id=lawyer.lawyer_id     # UUID object
     )
-    
     db.add(assignment)
-    db.flush()  # Para obter o ID da atribuição
-    
-    # Criar sessão de chat
-    session = ConsultationSession(
-        assignment_id=assignment.assignment_id
-    )
+    db.flush()
+
+    # ── Criar Sessão de Chat ─────────────────────────────────────────────────
+    session = ConsultationSession(assignment_id=assignment.assignment_id)
     db.add(session)
     db.flush()
-    
-    # Criar mensagem de boas-vindas
-    welcome_text = f"Olá! Sou {lawyer.nome}, seu advogado. Recebemos o seu pagamento via M-Pesa. Como posso ajudar?"
+
+    # ── Mensagem de boas-vindas ──────────────────────────────────────────────
     welcome_msg = ChatMessage(
         order_id=new_order.id,
         sender_id=lawyer.lawyer_id,
         sender="lawyer",
-        text=welcome_text,
+        text=f"Olá! Sou {lawyer.nome}, o seu advogado. Recebi o seu caso e estou pronto para ajudar. Como posso ajudar?",
         type="text"
     )
     db.add(welcome_msg)
-    
+
     db.commit()
     db.refresh(new_order)
     db.refresh(assignment)
     db.refresh(session)
-    
+
     return {
         "success": True,
-        "message": "Consulta criada e advogado atribuído com sucesso!",
+        "message": f"Consulta criada. Advogado {lawyer.nome} atribuído com sucesso!",
         "order": new_order.to_dict(),
         "lawyer": lawyer.to_dict(),
         "assignment": assignment.to_dict()

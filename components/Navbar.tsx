@@ -2,9 +2,16 @@ import React from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { MozambiqueFlagIcon, SettingsIcon, UserIcon } from './ui/icons';
 
+const MenuIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+);
+
 interface Props {
     onAdminClick?: () => void;
     hideLogo?: boolean;
+    onMenuClick?: () => void;
 }
 
 const LogoutIcon = ({ className }: { className?: string }) => (
@@ -15,7 +22,7 @@ const LogoutIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-export default function Navbar({ onAdminClick, hideLogo }: Props) {
+export default function Navbar({ onAdminClick, hideLogo, onMenuClick }: Props) {
     const { user, logout, isAdmin } = useAuth();
     const [showUserMenu, setShowUserMenu] = React.useState(false);
 
@@ -23,6 +30,17 @@ export default function Navbar({ onAdminClick, hideLogo }: Props) {
         <nav className="bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700">
             <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
+                    {/* Hamburger button - mobile only */}
+                    {onMenuClick && (
+                        <button
+                            onClick={onMenuClick}
+                            className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors mr-2"
+                            aria-label="Abrir menu"
+                        >
+                            <MenuIcon />
+                        </button>
+                    )}
+
                     {/* Logo */}
                     {!hideLogo ? (
                         <div className="flex items-center gap-3">

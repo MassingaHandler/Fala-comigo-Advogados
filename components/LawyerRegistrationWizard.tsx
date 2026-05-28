@@ -6,7 +6,7 @@ import ProgressIndicator from './ui/ProgressIndicator';
 import DocumentUpload from './ui/DocumentUpload';
 
 interface Props {
-    onComplete: (data: LawyerRegistrationData) => void;
+    onComplete: (data: LawyerRegistrationData) => void | Promise<void>;
     onBack: () => void;
 }
 
@@ -32,6 +32,7 @@ const NATIONALITIES_LIST = ['Moçambicana', 'Portuguesa', 'Brasileira', 'Sul-Afr
 
 export default function LawyerRegistrationWizard({ onComplete, onBack }: Props) {
     const [currentStep, setCurrentStep] = useState(1);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [data, setData] = useState<LawyerRegistrationData>({
         fullName: '',
         birthDate: null,
@@ -52,6 +53,8 @@ export default function LawyerRegistrationWizard({ onComplete, onBack }: Props) 
         officeAddress: '',
         city: '',
         province: '',
+        password: '',
+        passwordConfirm: '',
         termsAccepted: false,
         legalDeclaration: false,
         verificationAuthorization: false,
@@ -110,6 +113,12 @@ export default function LawyerRegistrationWizard({ onComplete, onBack }: Props) 
             if (!data.officeAddress) newErrors.officeAddress = 'Endereço do escritório obrigatório';
             if (!data.city) newErrors.city = 'Cidade obrigatória';
             if (!data.province) newErrors.province = 'Província obrigatória';
+            if (!data.password || data.password.length < 8) {
+                newErrors.password = 'A senha deve ter pelo menos 8 caracteres';
+            }
+            if (data.password !== data.passwordConfirm) {
+                newErrors.passwordConfirm = 'As senhas não coincidem';
+            }
         } else if (step === 6) {
             if (!data.termsAccepted) newErrors.termsAccepted = 'Deve aceitar os termos';
             if (!data.legalDeclaration) newErrors.legalDeclaration = 'Declaração obrigatória';
@@ -130,9 +139,14 @@ export default function LawyerRegistrationWizard({ onComplete, onBack }: Props) 
         else onBack();
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!validateStep(6)) return;
-        onComplete(data);
+        setIsSubmitting(true);
+        try {
+            await onComplete(data);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const toggleSpecialization = (spec: string) => {
@@ -536,6 +550,40 @@ export default function LawyerRegistrationWizard({ onComplete, onBack }: Props) 
                                     {errors.province && <p className="text-red-500 text-xs mt-1">{errors.province}</p>}
                                 </div>
                             </div>
+                            {/* Password */}
+                            <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
+                                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Senha de Acesso à Plataforma</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Senha <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={data.password}
+                                            onChange={(e) => updateData('password', e.target.value)}
+                                            className={`w-full px-4 py-3 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            placeholder="Mínimo 8 caracteres"
+                                        />
+                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Confirmar Senha <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={data.passwordConfirm}
+                                            onChange={(e) => updateData('passwordConfirm', e.target.value)}
+                                            className={`w-full px-4 py-3 rounded-lg border ${errors.passwordConfirm ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            placeholder="Repita a senha"
+                                        />
+                                        {errors.passwordConfirm && <p className="text-red-500 text-xs mt-1">{errors.passwordConfirm}</p>}
+                                    </div>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Usará este email e senha para entrar no portal do advogado.</p>
+                            </div>
+
                             <button
                                 onClick={handleNext}
                                 className="w-full mt-6 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-all shadow-lg"
@@ -620,9 +668,18 @@ export default function LawyerRegistrationWizard({ onComplete, onBack }: Props) 
 
                             <button
                                 onClick={handleSubmit}
-                                className="w-full mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-6 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
+                                disabled={isSubmitting}
+                                className="w-full mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-6 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                                Submeter Registro
+                                {isSubmitting ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                        </svg>
+                                        A submeter...
+                                    </span>
+                                ) : 'Submeter Registro'}
                             </button>
                         </div>
                     )}

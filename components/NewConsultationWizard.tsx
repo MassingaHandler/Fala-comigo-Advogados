@@ -48,17 +48,32 @@ export default function NewConsultationWizard({ onComplete, onBack }: Props) {
     setSelectedTopic(topic);
     setStep('lawyer');
 
-    // Buscar advogados disponíveis
     setLoadingLawyers(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/lawyers?specialty=${encodeURIComponent(topic.name)}`);
+      // Carrega TODOS os advogados verificados; passa o topic como hint para ordenação
+      const url = new URL('http://localhost:8000/api/v1/lawyers');
+      url.searchParams.set('specialty', topic.name);
+      const response = await fetch(url.toString());
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (data.success) {
         setAvailableLawyers(data.data || []);
+      } else {
+        // Fallback: tentar sem filtro de especialidade
+        const fallback = await fetch('http://localhost:8000/api/v1/lawyers');
+        const fallbackData = await fallback.json();
+        setAvailableLawyers(fallbackData.data || []);
       }
     } catch (error) {
       console.error('Erro ao buscar advogados:', error);
-      setAvailableLawyers([]);
+      // Tentar sem filtro como último recurso
+      try {
+        const fallback = await fetch('http://localhost:8000/api/v1/lawyers');
+        const fallbackData = await fallback.json();
+        setAvailableLawyers(fallbackData.data || []);
+      } catch {
+        setAvailableLawyers([]);
+      }
     } finally {
       setLoadingLawyers(false);
     }
@@ -187,14 +202,14 @@ export default function NewConsultationWizard({ onComplete, onBack }: Props) {
 
         {steps.map((s) => {
           const status = getStepStatus(s.id);
-          let circleClass = "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 border-4 ";
-          let textClass = "absolute -bottom-6 text-xs font-medium transition-colors duration-300 ";
+          let circleClass = "w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xs md:text-sm font-bold transition-all duration-300 border-2 md:border-4 ";
+          let textClass = "absolute -bottom-6 text-xs font-medium transition-colors duration-300 hidden sm:block ";
 
           if (status === 'completed') {
             circleClass += "bg-green-500 border-green-500 text-white scale-110";
             textClass += "text-green-600 dark:text-green-400";
           } else if (status === 'active') {
-            circleClass += "bg-red-600 border-red-200 dark:border-red-900 text-white scale-125 shadow-lg";
+            circleClass += "bg-red-600 border-red-200 dark:border-red-900 text-white scale-110 md:scale-125 shadow-lg";
             textClass += "text-red-600 dark:text-red-400 font-bold";
           } else {
             circleClass += "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500";

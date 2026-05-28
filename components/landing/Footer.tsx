@@ -71,7 +71,7 @@ export default function Footer() {
                         <h4 className="text-white font-bold text-lg mb-6">Para Advogados</h4>
                         <ul className="space-y-3">
                             <li>
-                                <button onClick={() => navigate('/portal-advogado')} className="hover:text-red-500 transition-colors">
+                                <button onClick={() => navigate('/login?role=advogado')} className="hover:text-red-500 transition-colors">
                                     Portal do Advogado
                                 </button>
                             </li>

@@ -9,6 +9,8 @@ export default function AdminAnalytics() {
     const [isLoading, setIsLoading] = useState(true);
     const [data, setData] = useState<any>(null);
 
+    const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
     useEffect(() => {
         const fetchAnalytics = async () => {
             setIsLoading(true);
@@ -16,7 +18,7 @@ export default function AdminAnalytics() {
                 const token = localStorage.getItem('fala_comigo_token');
                 if (!token) return;
 
-                const url = new URL('http://localhost:8000/api/v1/admin/analytics');
+                const url = new URL(`${API_BASE_URL}/api/v1/admin/analytics`);
                 url.searchParams.append('period', period);
 
                 const response = await fetch(url.toString(), {
@@ -73,9 +75,9 @@ export default function AdminAnalytics() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-200">Análises e Relatórios</h1>
+                    <h1 className="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-200">Análises e Relatórios</h1>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Visualize métricas detalhadas da plataforma</p>
                 </div>
                 <div className="flex gap-2">

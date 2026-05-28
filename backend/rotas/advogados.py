@@ -37,6 +37,7 @@ async def list_lawyers(
     specialty: Optional[str] = None,
     available: Optional[bool] = None,
     rating: Optional[float] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Listar advogados disponíveis"""
@@ -44,21 +45,39 @@ async def list_lawyers(
         Lawyer.is_active == True,
         Lawyer.verification_status == "verified"
     )
-    
+
     if specialty:
-        query = query.filter(Lawyer.especialidade == specialty)
-    
+        # Pesquisa flexível: match parcial na especialidade principal
+        # OU verificação dentro do array de especializações
+        query = query.filter(
+            (Lawyer.especialidade.ilike(f"%{specialty}%")) |
+            (func.array_to_string(Lawyer.specializations, ',').ilike(f"%{specialty}%"))
+        )
+
+    if search:
+        query = query.filter(
+            (Lawyer.nome.ilike(f"%{search}%")) |
+            (Lawyer.especialidade.ilike(f"%{search}%")) |
+            (Lawyer.city.ilike(f"%{search}%"))
+        )
+
     if available is not None:
         query = query.filter(Lawyer.is_online == available)
-    
+
     if rating:
         query = query.filter(Lawyer.rating >= rating)
-    
-    lawyers = query.all()
-    
+
+    # Ordenar: online primeiro, depois por avaliação
+    lawyers = query.order_by(
+        Lawyer.is_online.desc(),
+        Lawyer.rating.desc(),
+        Lawyer.cases_completed.desc()
+    ).all()
+
     return {
         "success": True,
-        "data": [lawyer.to_dict() for lawyer in lawyers]
+        "data": [lawyer.to_dict() for lawyer in lawyers],
+        "total": len(lawyers)
     }
 
 
@@ -108,20 +127,62 @@ async def get_lawyer_assignments(
     db: Session = Depends(get_db)
 ):
     """Obter consultas atribuídas ao advogado"""
-    # Buscar assignments do advogado
+    import uuid as _uuid
+    from modelos.consultas import Session as ConsultationSession
+    from modelos.mensagens import ChatMessage, Document
+    from modelos.usuarios import User
+
+    # Converter string para UUID para garantir match correcto no PostgreSQL
+    try:
+        lawyer_uuid = _uuid.UUID(lawyer_id)
+    except (ValueError, AttributeError):
+        return {"success": True, "data": []}
+
     assignments = db.query(Assignment).filter(
-        Assignment.lawyer_id == lawyer_id
-    ).all()
-    
+        Assignment.lawyer_id == lawyer_uuid
+    ).order_by(Assignment.assigned_at.desc()).all()
+
     result = []
     for assignment in assignments:
-        # Buscar ordem relacionada
+        # Buscar order explicitamente
         order = db.query(Order).filter(Order.id == assignment.order_id).first()
         if not order:
             continue
-        
-        # Montar dados do assignment
-        assignment_data = {
+
+        # Buscar nome do cliente sem usar lazy load da relationship
+        client_user = db.query(User).filter(User.id == order.user_id).first()
+        client_name = client_user.full_name if client_user else "Cliente"
+
+        # Buscar ou criar sessão de chat
+        session = db.query(ConsultationSession).filter(
+            ConsultationSession.assignment_id == assignment.assignment_id
+        ).first()
+
+        if not session:
+            session = ConsultationSession(assignment_id=assignment.assignment_id)
+            db.add(session)
+            db.flush()
+            lawyer_obj = db.query(Lawyer).filter(Lawyer.lawyer_id == lawyer_uuid).first()
+            if lawyer_obj:
+                welcome = ChatMessage(
+                    order_id=order.id,
+                    sender_id=lawyer_uuid,
+                    sender="lawyer",
+                    text=f"Olá! Sou {lawyer_obj.nome}. Como posso ajudar?",
+                    type="text"
+                )
+                db.add(welcome)
+            db.commit()
+            db.refresh(session)
+
+        # Buscar mensagens e documentos
+        messages = db.query(ChatMessage).filter(
+            ChatMessage.order_id == order.id
+        ).order_by(ChatMessage.timestamp.asc()).all()
+
+        docs = db.query(Document).filter(Document.order_id == order.id).all()
+
+        result.append({
             "assignment_id": str(assignment.assignment_id),
             "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
             "order": {
@@ -137,16 +198,22 @@ async def get_lawyer_assignments(
                 "payment_method": order.payment_method,
                 "status": order.status,
                 "created_at": order.created_at.isoformat() if order.created_at else None,
-                "client_name": order.user.full_name if order.user else "Cliente"
+                "client_name": client_name,
+                "lawyer_notes": order.lawyer_notes,
+                "follow_up_requested": order.follow_up_requested,
             },
-            "session": assignment.session.to_dict() if assignment.session else None
-        }
-        
-        result.append(assignment_data)
-    
+            "session": {
+                "session_id": str(session.session_id),
+                "start_time": session.start_time.isoformat() if session.start_time else None,
+                "messages": [m.to_dict() for m in messages],
+                "documents": [d.to_dict() for d in docs],
+            }
+        })
+
     return {
         "success": True,
-        "data": result
+        "data": result,
+        "total": len(result)
     }
 
 

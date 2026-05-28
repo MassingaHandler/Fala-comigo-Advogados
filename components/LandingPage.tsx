@@ -87,10 +87,19 @@ export default function LandingPage() {
                         </div>
 
                         {/* CTA Buttons */}
-                        <div className="hidden lg:flex items-center gap-4">
+                        <div className="hidden lg:flex items-center gap-3">
+                            <button
+                                onClick={() => navigate('/login?role=advogado')}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-all ${isScrolled
+                                    ? 'border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20'
+                                    : 'border-white/40 text-white hover:bg-white/10'
+                                    }`}
+                            >
+                                ⚖️ Para Advogados
+                            </button>
                             <button
                                 onClick={() => navigate('/login')}
-                                className={`px-6 py-2 font-semibold rounded-lg transition-all ${isScrolled
+                                className={`px-5 py-2 font-semibold rounded-lg transition-all ${isScrolled
                                     ? 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                                     : 'text-white hover:bg-white/10'
                                     }`}

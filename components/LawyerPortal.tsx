@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ScaleIcon, HomeIcon, BriefcaseIcon, ClockIcon, UserIcon, LogOutIcon } from './ui/icons';
 import { DollarSignIcon } from './ui/dashboard-icons';
 import LawyerDashboard from './LawyerDashboard';
@@ -8,149 +9,121 @@ import LawyerHistoryView from './LawyerHistoryView';
 import LawyerFinancials from './LawyerFinancials';
 import LawyerProfile from './LawyerProfile';
 import LawyerCaseDetailsModal from './LawyerCaseDetailsModal';
-import type { Order, Lawyer, ChatMessage } from '../types';
+import type { Order, Lawyer } from '../types';
 import { OrderStatus } from '../types';
 
 interface Props {
-    onBack: () => void;
+    onBack?: () => void;
 }
 
-type View = 'login' | 'register' | 'dashboard' | 'cases' | 'chat' | 'history' | 'financials' | 'profile';
+type View = 'dashboard' | 'cases' | 'chat' | 'history' | 'financials' | 'profile';
 
-export default function LawyerPortal({ onBack }: Props) {
-    const [view, setView] = useState<View>('login');
-    const [loading, setLoading] = useState(false);
+export default function LawyerPortal(_props: Props) {
+    const navigate = useNavigate();
+    const [view, setView] = useState<View>('dashboard');
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [consultations, setConsultations] = useState<Order[]>([]);
     const [currentLawyer, setCurrentLawyer] = useState<Lawyer | null>(null);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
-    // Buscar casos do advogado quando autenticado
-    useEffect(() => {
-        const fetchLawyerCases = async () => {
-            if (view !== 'login' && view !== 'register' && currentLawyer) {
-                try {
-                    const token = localStorage.getItem('fala_comigo_token');
-                    if (!token) return;
+    const [casesLoading, setCasesLoading] = useState(false);
+    const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-                    // Buscar assignments do advogado
-                    const response = await fetch(`http://localhost:8000/api/v1/lawyers/${currentLawyer.lawyer_id}/assignments`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
+    const fetchLawyerCases = async (lawyerObj?: Lawyer) => {
+        const lawyer = lawyerObj || currentLawyer;
+        if (!lawyer) return;
+        const token = localStorage.getItem('fala_comigo_token');
+        if (!token) return;
 
-                    if (response.ok) {
-                        const result = await response.json();
-                        if (result.success && result.data) {
-                            // Converter para formato Order
-                            const orders: Order[] = result.data.map((assignment: any) => ({
-                                id: assignment.order.id,
-                                human_id: assignment.order.human_id || assignment.order.order_id,
-                                order_id: assignment.order.order_id || assignment.order.human_id,
-                                user_id: assignment.order.user_id,
-                                clientName: assignment.order.client_name,
-                                clientPhoneNumber: assignment.order.client_phone_number,
-                                topic: assignment.order.topic,
-                                pkg: assignment.order.pkg,
-                                consultationType: assignment.order.consultation_type,
-                                payment_status: assignment.order.payment_status,
-                                payment_method: assignment.order.payment_method,
-                                status: assignment.order.status as OrderStatus,
-                                createdAt: new Date(assignment.order.created_at),
-                                termsAccepted: true,
-                                assignment: {
-                                    assignment_id: assignment.assignment_id,
-                                    lawyer: currentLawyer,
-                                    assignedAt: new Date(assignment.assigned_at),
-                                    session: assignment.session ? {
-                                        session_id: assignment.session.session_id,
-                                        startTime: new Date(assignment.session.start_time),
-                                        messages: assignment.session.messages || [],
-                                        documents: assignment.session.documents || []
-                                    } : undefined
-                                }
-                            }));
-
-                            setConsultations(orders);
-                            console.log('Casos do advogado carregados:', orders);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Erro ao buscar casos do advogado:', error);
-                }
-            }
-        };
-
-        fetchLawyerCases();
-    }, [view, currentLawyer]);
-
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setLoading(true);
-
+        setCasesLoading(true);
         try {
-            // Chamar API de login do backend
-            const response = await fetch('http://localhost:8000/api/v1/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email, password })
-            });
+            const response = await fetch(
+                `http://localhost:8000/api/v1/lawyers/${lawyer.lawyer_id}/assignments`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                setError(result.detail || 'Email ou senha incorretos');
-                setLoading(false);
-                return;
-            }
-
-            if (result.success && result.user && result.user.role === 'lawyer') {
-                // Salvar token
-                localStorage.setItem('fala_comigo_token', result.token);
-                localStorage.setItem('fala_comigo_lawyer', JSON.stringify(result.user));
-
-                // Configurar advogado atual
-                const lawyer: Lawyer = {
-                    lawyer_id: result.user.lawyer_id,
-                    nome: result.user.nome,
-                    especialidade: result.user.especialidade,
-                    avatarUrl: result.user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(result.user.nome)}&background=4f46e5&color=fff`,
-                    phoneNumber: result.user.phoneNumber || result.user.professionalPhone,
-                    oamNumber: result.user.oamNumber,
-                    isOnline: result.user.isOnline,
-                    rating: result.user.rating,
-                    totalReviews: result.user.totalReviews
-                };
-
-                setCurrentLawyer(lawyer);
-                setView('dashboard');
-                console.log('Login de advogado bem-sucedido:', lawyer);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.data) {
+                    const orders: Order[] = result.data.map((a: any) => ({
+                        id: a.order.id,
+                        human_id: a.order.human_id || a.order.order_id,
+                        order_id: a.order.order_id || a.order.human_id,
+                        user_id: a.order.user_id,
+                        clientName: a.order.client_name,
+                        clientPhoneNumber: a.order.client_phone_number,
+                        topic: a.order.topic,
+                        pkg: a.order.pkg,
+                        consultationType: a.order.consultation_type,
+                        payment_status: a.order.payment_status,
+                        payment_method: a.order.payment_method,
+                        status: a.order.status as OrderStatus,
+                        createdAt: new Date(a.order.created_at),
+                        termsAccepted: true,
+                        assignment: {
+                            assignment_id: a.assignment_id,
+                            lawyer: lawyer,
+                            assignedAt: new Date(a.assigned_at),
+                            session: a.session ? {
+                                session_id: a.session.session_id,
+                                startTime: a.session.start_time ? new Date(a.session.start_time) : new Date(),
+                                messages: a.session.messages || [],
+                                documents: a.session.documents || []
+                            } : undefined
+                        }
+                    }));
+                    setConsultations(orders);
+                    setLastRefresh(new Date());
+                }
             } else {
-                setError('Esta conta não é de advogado');
+                console.error('Erro ao buscar casos:', response.status, await response.text());
             }
         } catch (error) {
-            console.error('Erro ao fazer login:', error);
-            setError('Erro ao conectar com o servidor');
+            console.error('Erro ao buscar casos do advogado:', error);
         } finally {
-            setLoading(false);
+            setCasesLoading(false);
         }
     };
 
-    const handleRegister = (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setTimeout(() => {
-            setLoading(false);
-            alert('Candidatura submetida à Ordem dos Advogados com sucesso!');
-            setView('login');
-        }, 2000);
+    // Ao montar: carregar advogado do localStorage ou redirecionar para login
+    useEffect(() => {
+        const stored = localStorage.getItem('fala_comigo_lawyer');
+        if (!stored) {
+            navigate('/login?role=advogado', { replace: true });
+            return;
+        }
+        try {
+            const lawyerData = JSON.parse(stored);
+            const lawyer: Lawyer = {
+                lawyer_id: lawyerData.lawyer_id,
+                nome: lawyerData.nome,
+                especialidade: lawyerData.especialidade,
+                avatarUrl: lawyerData.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(lawyerData.nome || 'A')}&background=4f46e5&color=fff`,
+                phoneNumber: lawyerData.phoneNumber || lawyerData.professionalPhone,
+                oamNumber: lawyerData.oamNumber,
+                isOnline: lawyerData.isOnline,
+                rating: lawyerData.rating,
+                totalReviews: lawyerData.totalReviews,
+            };
+            setCurrentLawyer(lawyer);
+            fetchLawyerCases(lawyer);
+        } catch {
+            navigate('/login?role=advogado', { replace: true });
+        }
+    }, []);
+
+    // Auto-refresh a cada 30 segundos quando autenticado
+    useEffect(() => {
+        if (currentLawyer) {
+            const interval = setInterval(() => fetchLawyerCases(), 30000);
+            return () => clearInterval(interval);
+        }
+    }, [currentLawyer?.lawyer_id]);
+
+    const handleLogout = () => {
+        localStorage.removeItem('fala_comigo_lawyer');
+        localStorage.removeItem('fala_comigo_token');
+        navigate('/login?role=advogado');
     };
 
     const handleUpdateOrder = (updatedOrder: Order) => {
@@ -164,7 +137,7 @@ export default function LawyerPortal({ onBack }: Props) {
         const confirmed = window.confirm(`Tem certeza que deseja concluir o caso de ${order.clientName || 'Cliente'} (#${order.human_id})?\n\nIsso moverá o caso para o histórico.`);
         if (!confirmed) return;
 
-        setLoading(true);
+        setCasesLoading(true);
         try {
             const token = localStorage.getItem('fala_comigo_token');
             const response = await fetch(`http://localhost:8000/api/v1/consultations/${order.id}/status`, {
@@ -190,7 +163,7 @@ export default function LawyerPortal({ onBack }: Props) {
             console.error('Erro ao concluir caso:', error);
             alert('Erro de conexão ao tentar concluir o caso.');
         } finally {
-            setLoading(false);
+            setCasesLoading(false);
         }
     };
 
@@ -203,20 +176,37 @@ export default function LawyerPortal({ onBack }: Props) {
         c.status === OrderStatus.ASSIGNED || c.status === OrderStatus.IN_PROGRESS
     );
 
-    // Authenticated views
-    if (view !== 'login' && view !== 'register') {
+    // Enquanto não tiver currentLawyer (a carregar do localStorage), mostrar loading
+    if (!currentLawyer) {
         return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
+            </div>
+        );
+    }
+
+    return (
             <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
                 {/* Sidebar Navigation */}
                 <div className="w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col">
-                    <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center gap-3">
-                            <ScaleIcon className="w-8 h-8 text-indigo-600" />
-                            <div>
-                                <h2 className="text-lg font-bold text-gray-800 dark:text-white">Portal do Advogado</h2>
-                                <p className="text-xs text-green-500 font-medium">● Online</p>
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-2">
+                            <ScaleIcon className="w-7 h-7 text-indigo-600" />
+                            <div className="flex-1 min-w-0">
+                                <h2 className="text-base font-bold text-gray-800 dark:text-white truncate">Portal do Advogado</h2>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{currentLawyer?.nome}</p>
                             </div>
                         </div>
+                        <button
+                            onClick={() => fetchLawyerCases()}
+                            disabled={casesLoading}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
+                        >
+                            <svg className={`w-3.5 h-3.5 ${casesLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            {casesLoading ? 'A actualizar...' : lastRefresh ? `Actualizado ${lastRefresh.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}` : 'Actualizar casos'}
+                        </button>
                     </div>
 
                     <nav className="flex-1 p-4 space-y-2">
@@ -248,7 +238,7 @@ export default function LawyerPortal({ onBack }: Props) {
 
                     <div className="p-4 border-t border-gray-200 dark:border-gray-700">
                         <button
-                            onClick={() => setView('login')}
+                            onClick={handleLogout}
                             className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
                         >
                             <LogOutIcon className="w-5 h-5" />
@@ -321,135 +311,4 @@ export default function LawyerPortal({ onBack }: Props) {
                 </div>
             </div>
         );
-    }
-
-    // Register view
-    if (view === 'register') {
-        return (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-auto p-8 animate-fade-in">
-                <button onClick={() => setView('login')} className="text-sm text-gray-500 hover:text-gray-800 mb-4">← Voltar</button>
-                <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Registo de Advogado</h2>
-                <p className="text-sm text-gray-500 mb-6">Junte-se à nossa rede. Validamos a sua inscrição com a OAM.</p>
-
-                <form onSubmit={handleRegister} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome Completo</label>
-                        <input required type="text" className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" placeholder="Dr. Exemplo" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Número da Carteira Profissional (OAM)</label>
-                        <input required type="text" className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" placeholder="Ex: 1234/OAM" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Especialidade</label>
-                        <select className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600">
-                            <option>Família</option>
-                            <option>Trabalho</option>
-                            <option>Criminal</option>
-                            <option>Comercial</option>
-                        </select>
-                    </div>
-                    <button type="submit" disabled={loading} className="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition-colors">
-                        {loading ? 'A validar...' : 'Submeter Candidatura'}
-                    </button>
-                </form>
-            </div>
-        );
-    }
-
-    // Login view
-    return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800">
-            <div className="w-full max-w-md">
-                <div className="text-center mb-8">
-                    <div className="flex items-center justify-center gap-3 mb-4">
-                        <ScaleIcon className="w-12 h-12 text-indigo-600" />
-                        <div>
-                            <h1 className="text-4xl font-bold text-indigo-600 dark:text-indigo-500">Portal do Advogado</h1>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Fala Comigo - Advocacia Digital</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 animate-fade-in">
-                    <button onClick={onBack} className="flex items-center text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors mb-6">
-                        ← Voltar
-                    </button>
-
-                    <h2 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-200">Acesso Advogado</h2>
-
-                    {error && (
-                        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-                        </div>
-                    )}
-
-                    <form onSubmit={handleLogin} className="space-y-5">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email Profissional</label>
-                            <input
-                                required
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                placeholder="exemplo@email.com" />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Senha</label>
-                            <input
-                                required
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                placeholder="••••••••" />
-                        </div>
-
-                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">Credenciais de Teste:</p>
-                            <p className="text-xs text-blue-600 dark:text-blue-400">
-                                Email: joao.silva@example.com<br />
-                                Senha: password123
-                            </p>
-                        </div>
-
-                        <button type="submit" disabled={loading}
-                            className="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 dark:focus:ring-indigo-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-                            {loading ? (
-                                <span className="flex items-center justify-center">
-                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Entrando...
-                                </span>
-                            ) : 'Entrar'}
-                        </button>
-                    </form>
-
-                    <div className="mt-6 text-center">
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Não tem conta?{' '}
-                            <button onClick={() => setView('register')} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline focus:outline-none">
-                                Registar-se
-                            </button>
-                        </p>
-                    </div>
-
-                    <div className="mt-4 text-center">
-                        <button className="text-xs text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                            Esqueceu a senha?
-                        </button>
-                    </div>
-                </div>
-
-                <div className="mt-8 text-center text-xs text-gray-500 dark:text-gray-400">
-                    <p>© 2024 Fala Comigo - Portal do Advogado</p>
-                    <p className="mt-1">Plataforma oficial de consultas jurídicas de Moçambique</p>
-                </div>
-            </div >
-        </div >
-    );
 }

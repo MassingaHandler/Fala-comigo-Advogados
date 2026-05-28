@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:3000",
         "http://localhost:5173",
-        "http://localhost:8000"
+        os.getenv("SERVER_DOMAIN", "http://localhost:8000")
     ]
     
     # M-Pesa
